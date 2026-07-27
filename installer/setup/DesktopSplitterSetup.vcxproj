@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{5A1E93C7-4F82-4A17-9E63-2B7D0C6F14A9}</ProjectGuid>
+    <RootNamespace>DesktopSplitterSetup</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <!-- Target the VS2022 v143 toolset when present, otherwise the newest one
+         installed, so the setup program builds on any modern Visual Studio.
+         Override with /p:PlatformToolset=vNNN. -->
+    <PlatformToolset Condition="Exists('$(VCTargetsPath)Platforms\$(Platform)\PlatformToolsets\v143')">v143</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)'=='' or '$(PlatformToolset)'=='v100'">$(DefaultPlatformToolset)</PlatformToolset>
+    <PlatformToolset Condition="('$(PlatformToolset)'=='' or '$(PlatformToolset)'=='v100') and Exists('$(VCTargetsPath)Platforms\$(Platform)\PlatformToolsets\v145')">v145</PlatformToolset>
+    <PlatformToolset Condition="('$(PlatformToolset)'=='' or '$(PlatformToolset)'=='v100') and Exists('$(VCTargetsPath)Platforms\$(Platform)\PlatformToolsets\v144')">v144</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+    <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <!-- The UAC level comes from DesktopSplitterSetup.manifest. EnableUAC must
+         be off so the linker does not emit a second, conflicting trustInfo. -->
+    <GenerateManifest>true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\shared;$(ProjectDir)..\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)'=='Debug'">Disabled</Optimization>
+      <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
+      <!-- Static CRT: the installer must run on a PC with no redistributable. -->
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <!-- GUI subsystem: double-clicking must not flash a console window. The
+           console modes attach to the launching console instead. -->
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalDependencies>setupapi.lib;newdev.lib;cfgmgr32.lib;wintrust.lib;crypt32.lib;comctl32.lib;shell32.lib;ole32.lib;oleaut32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>false</EnableDpiAwareness>
+    </Manifest>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <!-- Stage the built + signed driver package into payload\ so the .rc can
+       embed it. Fails the build with a clear message when the driver has not
+       been built or its catalog is unsigned. -->
+  <Target Name="StageDriverPayload" BeforeTargets="ResourceCompile;ClCompile">
+    <Message Importance="high" Text="Staging driver package and product files for embedding..." />
+    <!-- /p:DeskSplitSkipAppPublish=true reuses the previous app publish; used
+         for quick rebuilds and test builds, never for a shipping build. -->
+    <PropertyGroup>
+      <_DeskSplitStageArgs Condition="'$(DeskSplitSkipAppPublish)' == 'true'">-SkipAppPublish</_DeskSplitStageArgs>
+      <_DeskSplitStageArgs Condition="'$(Configuration)' != ''">$(_DeskSplitStageArgs) -Configuration Release</_DeskSplitStageArgs>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)stage-payload.ps1&quot; $(_DeskSplitStageArgs)" />
+  </Target>
+  <ItemGroup>
+    <ClCompile Include="Setup.cpp" />
+    <ClCompile Include="Wizard.cpp" />
+    <ClCompile Include="InstallEngine.cpp" />
+    <ClCompile Include="ProductFiles.cpp" />
+    <ClCompile Include="Edition.cpp" />
+    <ClCompile Include="Payload.cpp" />
+    <ClCompile Include="Trust.cpp" />
+    <ClCompile Include="DriverPackage.cpp" />
+    <ClCompile Include="Guids.cpp" />
+    <ClCompile Include="..\common\DeviceNode.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Wizard.h" />
+    <ClInclude Include="InstallEngine.h" />
+    <ClInclude Include="ProductFiles.h" />
+    <ClInclude Include="Edition.h" />
+    <ClInclude Include="Payload.h" />
+    <ClInclude Include="Trust.h" />
+    <ClInclude Include="DriverPackage.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="..\common\DeviceNode.h" />
+    <ClInclude Include="..\..\shared\DeskSplitProtocol.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="DesktopSplitterSetup.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The Condition is a TEST HOOK and defaults to including the manifest.
+         Building with /p:DeskSplitNoManifest=true produces an otherwise
+         identical exe without requireAdministrator, which is the only way to
+         exercise the pre-elevation code paths (/?, /verify, argument parsing)
+         on a machine where the tester cannot elevate. Never ship that build. -->
+    <Manifest Include="DesktopSplitterSetup.manifest" Condition="'$(DeskSplitNoManifest)' != 'true'" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="stage-payload.ps1" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

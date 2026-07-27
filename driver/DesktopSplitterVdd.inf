@@ -1,0 +1,84 @@
+;
+; DesktopSplitterVdd.inf
+;
+; UMDF 2 indirect display driver (IddCx >= 1.4) for DesktopSplitter.
+; Root-enumerated software device, hardware ID Root\DesktopSplitterVdd.
+;
+
+[Version]
+PnpLockDown=1
+Signature="$Windows NT$"
+ClassGUID={4D36E968-E325-11CE-BFC1-08002BE10318}
+Class=Display
+ClassVer=2.0
+Provider=%ManufacturerName%
+CatalogFile=DesktopSplitterVdd.cat
+DriverVer= ; set by stampinf during the build
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$.10.0...17763
+
+; IddCx 1.4 requires Windows 10 version 1809 (build 17763) or later.
+[Standard.NT$ARCH$.10.0...17763]
+%DeviceName%=DesktopSplitterVdd_Install, Root\DesktopSplitterVdd
+
+[SourceDisksFiles]
+DesktopSplitterVdd.dll=1
+
+[SourceDisksNames]
+1=%DiskName%
+
+; =================== UMDF Device ==================================
+
+[DesktopSplitterVdd_Install.NT]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT
+CopyFiles=UMDriverCopy
+
+[DesktopSplitterVdd_Install.NT.hw]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.HW
+AddReg=DesktopSplitterVdd_HardwareDeviceSettings
+
+[DesktopSplitterVdd_HardwareDeviceSettings]
+; IndirectKmd is the kernel-mode shim that IddCx drivers require.
+HKR,,"UpperFilters",%REG_MULTI_SZ%,"IndirectKmd"
+; Keep this driver in its own WUDF host process group.
+HKR,"WUDF","DeviceGroupId",%REG_SZ%,"DesktopSplitterVddGroup"
+; FILE_DEVICE_SECURE_OPEN
+HKR,,"DeviceCharacteristics",%REG_DWORD%,0x0100
+; SYSTEM and Administrators get full access; interactive users get read/write
+; so the (non-elevated) control app can open the device interface.
+HKR,,"Security",,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+
+[DesktopSplitterVdd_Install.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[DesktopSplitterVdd_Install.NT.Wdf]
+UmdfService=DesktopSplitterVdd,DesktopSplitterVdd_Service_Install
+UmdfServiceOrder=DesktopSplitterVdd
+UmdfKernelModeClientPolicy=AllowKernelModeClients
+UmdfFileObjectPolicy=AllowNullAndUnknownFileObjects
+
+[DesktopSplitterVdd_Service_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%12%\UMDF\DesktopSplitterVdd.dll
+UmdfExtensions=IddCx0102
+
+[DestinationDirs]
+UMDriverCopy=12,UMDF ; %SystemRoot%\System32\drivers\UMDF
+
+[UMDriverCopy]
+DesktopSplitterVdd.dll
+
+; =================== Strings ==================================
+
+[Strings]
+ManufacturerName="DesktopSplitter"
+DiskName="DesktopSplitter Driver Installation Disk"
+DeviceName="DesktopSplitter Virtual Display"
+
+REG_MULTI_SZ = 0x00010000
+REG_SZ       = 0x00000000
+REG_DWORD    = 0x00010001

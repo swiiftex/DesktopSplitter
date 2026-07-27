@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Process)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Get-Item *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(cm status *)",
+      "PowerShell(cm find *)",
+      "mcp__unreal__describe_toolset",
+      "mcp__unreal__list_toolsets"
+    ]
+  }
+}

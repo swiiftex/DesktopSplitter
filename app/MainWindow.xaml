@@ -1,0 +1,402 @@
+<Window x:Class="DesktopSplitter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DesktopSplitter"
+        Height="900" Width="960"
+        MinHeight="680" MinWidth="820"
+        Background="{StaticResource WindowBackground}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+
+        <!-- Layout thumbnail: rectangles positioned on a canvas -->
+        <DataTemplate x:Key="LayoutItemTemplate">
+            <StackPanel Width="148" Margin="4,6">
+                <Border Background="{StaticResource PreviewBackground}"
+                        BorderBrush="{StaticResource PanelBorder}"
+                        BorderThickness="1" CornerRadius="3"
+                        Width="140" Height="84">
+                    <ItemsControl ItemsSource="{Binding PreviewBoxes}" Width="132" Height="76">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas Width="132" Height="76"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding X}"/>
+                                <Setter Property="Canvas.Top" Value="{Binding Y}"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Rectangle Width="{Binding W}" Height="{Binding H}"
+                                           RadiusX="2" RadiusY="2"
+                                           Fill="{StaticResource SegmentFill}"
+                                           Opacity="0.85"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+                <TextBlock Text="{Binding Name}" TextAlignment="Center" Margin="0,6,0,0"
+                           TextWrapping="Wrap" FontSize="12"/>
+                <TextBlock Text="{Binding Description}" TextAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}" FontSize="10.5"
+                           TextWrapping="Wrap" Margin="0,2,0,0"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <Style x:Key="LayoutItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" CornerRadius="5" Padding="2"
+                                Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="2">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF232833"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#FF202836"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Positions any canvas item by its X/Y -->
+        <Style x:Key="CanvasItemStyle" TargetType="ContentPresenter">
+            <Setter Property="Canvas.Left" Value="{Binding X}"/>
+            <Setter Property="Canvas.Top" Value="{Binding Y}"/>
+        </Style>
+
+        <!-- A numbered zone -->
+        <DataTemplate x:Key="ZoneTemplate">
+            <Border Width="{Binding W}" Height="{Binding H}" ClipToBounds="True"
+                    Background="{StaticResource ZoneFill}"
+                    BorderBrush="{StaticResource ZoneStroke}" BorderThickness="1"
+                    CornerRadius="3">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Number}" FontSize="30" FontWeight="Bold"
+                               TextAlignment="Center" Foreground="{StaticResource ZoneNumberBrush}"/>
+                    <TextBlock Text="{Binding SizeText}" FontSize="12" TextAlignment="Center"
+                               Foreground="{StaticResource ForegroundBrush}" Margin="0,1,0,0"/>
+                    <Border Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource ZoneStroke}"
+                            BorderThickness="1" CornerRadius="8" Padding="7,1" Margin="0,4,0,0"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding AspectNote}" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource ForegroundBrush}"/>
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasAspectNote}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- A draggable border between adjacent zones -->
+        <Style x:Key="SplitterThumbStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SplitterBrush}"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Opacity" Value="0.75"/>
+            <EventSetter Event="MouseLeftButtonDown" Handler="Splitter_MouseLeftButtonDown"/>
+            <EventSetter Event="MouseMove" Handler="Splitter_MouseMove"/>
+            <EventSetter Event="MouseLeftButtonUp" Handler="Splitter_MouseLeftButtonUp"/>
+            <EventSetter Event="LostMouseCapture" Handler="Splitter_LostMouseCapture"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SplitterHoverBrush}"/>
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+                <Trigger Property="IsMouseCaptureWithin" Value="True">
+                    <Setter Property="Background" Value="{StaticResource SplitterHoverBrush}"/>
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <DataTemplate x:Key="SplitterTemplate">
+            <Border Style="{StaticResource SplitterThumbStyle}"
+                    Width="{Binding W}" Height="{Binding H}"
+                    Cursor="{Binding DragCursor}"
+                    Tag="{Binding Id}"/>
+        </DataTemplate>
+
+        <!-- Compact per-zone manual entry -->
+        <DataTemplate x:Key="SegmentItemTemplate">
+            <Border Background="{StaticResource PanelBackground}"
+                    BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                    CornerRadius="4" Padding="10,7" Margin="0,0,8,8" Width="212">
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="W" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBox Width="66" Margin="6,0,10,0"
+                                 Text="{Binding WidthText, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="H" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBox Width="66" Margin="6,0,0,0"
+                                 Text="{Binding HeightText, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}"
+                               FontSize="10.5" Margin="0,5,0,0" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasError}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="170"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="DesktopSplitter" FontSize="19" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding DriverStatus}" Foreground="{StaticResource MutedBrush}"
+                       Margin="0,4,0,0" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding CompositorStatus}" Foreground="{StaticResource MutedBrush}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Body -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+            <StackPanel>
+
+                <TextBlock Text="PHYSICAL MONITOR" Style="{StaticResource SectionHeader}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding Monitors}"
+                              SelectedItem="{Binding SelectedMonitor}"
+                              DisplayMemberPath="Caption"
+                              IsEnabled="{Binding IsIdle}"/>
+                    <Button Grid.Column="1" Content="Rescan" Margin="8,0,0,0"
+                            Command="{Binding RefreshMonitorsCommand}"/>
+                </Grid>
+
+                <!-- Current mode + max refresh readout -->
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,16">
+                    <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
+                            BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="CURRENT MODE" Foreground="{StaticResource MutedBrush}"
+                                       FontSize="10" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding CurrentModeText}" FontFamily="Consolas" FontSize="13"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
+                            BorderThickness="1" CornerRadius="4" Padding="10,6">
+                        <StackPanel>
+                            <TextBlock Text="MAX REFRESH — ALL ZONES RUN AT THIS RATE"
+                                       Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RefreshText}" FontFamily="Consolas" FontSize="13"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Text="LAYOUT" Style="{StaticResource SectionHeader}"/>
+                <ListBox ItemsSource="{Binding Layouts}"
+                         SelectedItem="{Binding SelectedLayout}"
+                         ItemTemplate="{StaticResource LayoutItemTemplate}"
+                         ItemContainerStyle="{StaticResource LayoutItemContainerStyle}"
+                         Background="Transparent" BorderThickness="0"
+                         IsEnabled="{Binding IsIdle}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         Margin="0,0,0,16">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+
+                <TextBlock Text="ZONE EDITOR — DRAG THE BORDERS, OR TYPE EXACT SIZES BELOW"
+                           Style="{StaticResource SectionHeader}"/>
+
+                <Border Background="{StaticResource CanvasBackground}"
+                        BorderBrush="{StaticResource PanelBorder}" BorderThickness="1"
+                        CornerRadius="5" Padding="14" HorizontalAlignment="Left"
+                        IsEnabled="{Binding IsIdle}">
+                    <Grid x:Name="EditorSurface"
+                          Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}">
+
+                        <ItemsControl ItemsSource="{Binding Zones}"
+                                      ItemTemplate="{StaticResource ZoneTemplate}"
+                                      ItemContainerStyle="{StaticResource CanvasItemStyle}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+
+                        <!-- Splitters sit above the zones so they get the hit tests -->
+                        <ItemsControl ItemsSource="{Binding Splitters}"
+                                      ItemTemplate="{StaticResource SplitterTemplate}"
+                                      ItemContainerStyle="{StaticResource CanvasItemStyle}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="{Binding SumNote}" Foreground="{StaticResource MutedBrush}"
+                           FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasSumNote}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <ItemsControl ItemsSource="{Binding Segments}"
+                              ItemTemplate="{StaticResource SegmentItemTemplate}"
+                              IsEnabled="{Binding IsIdle}"
+                              Margin="0,12,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                    <Button Content="Reset to layout defaults" Command="{Binding ResetSegmentsCommand}"/>
+                </StackPanel>
+
+                <!-- ============================ display hiding ============================ -->
+                <TextBlock Text="DISPLAY HIDING (EXPERIMENTAL)" Style="{StaticResource SectionHeader}"/>
+                <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
+                        BorderThickness="1" CornerRadius="4" Padding="14,12" Margin="0,0,0,10"
+                        DataContext="{Binding Hiding}">
+                    <StackPanel>
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11.5"
+                                   Margin="0,0,0,10"
+                                   Text="Removes the physical monitor from the Windows desktop entirely instead of just covering it, by marking it as a specialized display. Every step is guarded: the change undoes itself automatically unless you confirm it."/>
+
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="18"/>
+                                            <ColumnDefinition Width="176"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Glyph}" FontSize="14"
+                                                   VerticalAlignment="Top">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding State}" Value="Ok">
+                                                            <Setter Property="Foreground" Value="#FF7FD48A"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding State}" Value="No">
+                                                            <Setter Property="Foreground" Value="#FFE0B457"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12"
+                                                   VerticalAlignment="Top"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Detail}" FontSize="11.5"
+                                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="Enable hiding..." Command="{Binding EnableCommand}" MinWidth="130"/>
+                            <Button Content="Disable hiding..." Command="{Binding DisableCommand}"
+                                    Margin="8,0,0,0" MinWidth="130"/>
+                            <Button Content="Test run (no changes)" Command="{Binding TestRunCommand}"
+                                    Margin="8,0,0,0"/>
+                            <Button Content="Re-check" Command="{Binding RefreshCommand}" Margin="8,0,0,0"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding DisabledReason}" Foreground="#FFE0B457"
+                                   FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasDisabledReason}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Actions -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,14,0,10">
+            <Button Content="Apply" Style="{StaticResource PrimaryButton}" MinWidth="110"
+                    Command="{Binding ApplyCommand}"/>
+            <Button Content="Revert" Margin="10,0,0,0" MinWidth="110"
+                    Command="{Binding RevertCommand}"/>
+            <Button Content="Minimize to tray" Margin="10,0,0,0"
+                    Command="{Binding MinimizeToTrayCommand}"/>
+        </StackPanel>
+
+        <!-- Status -->
+        <Border Grid.Row="3" Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4">
+            <TextBox x:Name="StatusBox"
+                     Text="{Binding StatusText, Mode=OneWay}"
+                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                     BorderThickness="0" Background="Transparent"
+                     FontSize="11.5"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+        </Border>
+
+    </Grid>
+</Window>

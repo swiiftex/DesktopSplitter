@@ -1,0 +1,37 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dscomp", "compositor\dscomp.vcxproj", "{6F2A6C41-6E1B-4C8B-9F2D-1F7B4D5A9C31}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "devcreate", "installer\devcreate\devcreate.vcxproj", "{B41C7A6D-6E52-4A2C-9F1B-3C08D5E9A177}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DesktopSplitterVdd", "driver\DesktopSplitterVdd.vcxproj", "{6F1B2C48-9D2E-4E5A-9C71-1A4E5B7D3F02}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DesktopSplitter", "app\DesktopSplitter.csproj", "{3D5E8C77-2B4F-4B7A-8F63-9A0C1D2E4F58}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6F2A6C41-6E1B-4C8B-9F2D-1F7B4D5A9C31}.Debug|x64.ActiveCfg = Debug|x64
+		{6F2A6C41-6E1B-4C8B-9F2D-1F7B4D5A9C31}.Debug|x64.Build.0 = Debug|x64
+		{6F2A6C41-6E1B-4C8B-9F2D-1F7B4D5A9C31}.Release|x64.ActiveCfg = Release|x64
+		{6F2A6C41-6E1B-4C8B-9F2D-1F7B4D5A9C31}.Release|x64.Build.0 = Release|x64
+		{B41C7A6D-6E52-4A2C-9F1B-3C08D5E9A177}.Debug|x64.ActiveCfg = Debug|x64
+		{B41C7A6D-6E52-4A2C-9F1B-3C08D5E9A177}.Debug|x64.Build.0 = Debug|x64
+		{B41C7A6D-6E52-4A2C-9F1B-3C08D5E9A177}.Release|x64.ActiveCfg = Release|x64
+		{B41C7A6D-6E52-4A2C-9F1B-3C08D5E9A177}.Release|x64.Build.0 = Release|x64
+		{6F1B2C48-9D2E-4E5A-9C71-1A4E5B7D3F02}.Debug|x64.ActiveCfg = Debug|x64
+		{6F1B2C48-9D2E-4E5A-9C71-1A4E5B7D3F02}.Release|x64.ActiveCfg = Release|x64
+		{3D5E8C77-2B4F-4B7A-8F63-9A0C1D2E4F58}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3D5E8C77-2B4F-4B7A-8F63-9A0C1D2E4F58}.Debug|x64.Build.0 = Debug|Any CPU
+		{3D5E8C77-2B4F-4B7A-8F63-9A0C1D2E4F58}.Release|x64.ActiveCfg = Release|Any CPU
+		{3D5E8C77-2B4F-4B7A-8F63-9A0C1D2E4F58}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,46 @@
+<Window x:Class="DesktopSplitter.Views.CountdownWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Keep display changes?"
+        Width="620" Height="360"
+        WindowStyle="None" ResizeMode="NoResize"
+        Topmost="True" ShowInTaskbar="True"
+        WindowStartupLocation="Manual"
+        Background="{StaticResource WindowBackground}">
+
+    <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="6">
+        <Grid Margin="28,22">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Display changes applied. Keep them?"
+                       FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
+
+            <TextBlock Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap"
+                       Foreground="{StaticResource MutedBrush}" FontSize="13"
+                       Text="If your display looks wrong, or you cannot see this clearly, do nothing — the change undoes itself when the countdown reaches zero."/>
+
+            <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock x:Name="CountdownText" Text="10"
+                           FontSize="86" FontWeight="Bold" TextAlignment="Center"
+                           Foreground="{StaticResource AccentBrush}"/>
+                <TextBlock x:Name="CountdownCaption" Text="seconds until automatic revert"
+                           TextAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="13"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="KeepButton" Content="Keep changes"
+                        Style="{StaticResource PrimaryButton}"
+                        MinWidth="180" Padding="18,12" FontSize="15"
+                        Click="Keep_Click"/>
+                <Button x:Name="RevertButton" Content="Revert now"
+                        Margin="16,0,0,0" MinWidth="180" Padding="18,12" FontSize="15"
+                        Click="Revert_Click"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

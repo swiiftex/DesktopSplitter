@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Spec target is .NET 8. Built here with the .NET 10 SDK against the installed
+         .NET 8 targeting pack / desktop runtime (no 8.x SDK on this machine).
+         The 10.0.19041.0 platform suffix pulls in the Windows SDK projection so we can read
+         Windows.Devices.Display.DisplayMonitor.UsageKind for the display-hiding panel.
+         NOTE: this changes the output folder to bin\<Config>\net8.0-windows10.0.19041.0\. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>AnyCPU;x64</Platforms>
+
+    <UseWPF>true</UseWPF>
+    <!-- WinForms is enabled purely for NotifyIcon (tray). No external packages. -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <AssemblyName>DesktopSplitter</AssemblyName>
+    <RootNamespace>DesktopSplitter</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Product>DesktopSplitter</Product>
+    <Company>DesktopSplitter</Company>
+    <AssemblyTitle>DesktopSplitter control app</AssemblyTitle>
+    <!-- WFAC010 tells WinForms apps to configure DPI via ApplicationHighDpiMode. This is a
+         WPF app that only borrows NotifyIcon, so PerMonitorV2 belongs in app.manifest. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWindowsForms injects global usings for System.Windows.Forms/System.Drawing which
+         collide with WPF types (Application, MessageBox, Point, Color, ...). The tray service
+         imports those namespaces explicitly instead. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+</Project>
