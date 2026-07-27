@@ -1,0 +1,123 @@
+name: Build DesktopSplitter
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create/update releases
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- WDK
+      # The runner image ships Visual Studio + Windows SDKs but NOT the WDK,
+      # and not the "Windows Driver Kit" VS component that provides the
+      # WindowsUserModeDriver10.0 platform toolset. Install both.
+      - name: Install Windows Driver Kit
+        shell: pwsh
+        run: |
+          winget install --id Microsoft.WindowsWDK.10.0.26100 --exact `
+            --accept-source-agreements --accept-package-agreements `
+            --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget WDK install failed ($LASTEXITCODE)" }
+
+      - name: Add WDK component to Visual Studio
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $vs) { throw "Visual Studio not found" }
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList `
+            'modify', '--installPath', "`"$vs`"", `
+            '--add', 'Component.Microsoft.Windows.DriverKit', `
+            '--quiet', '--norestart'
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "VS modify failed ($($p.ExitCode))" }
+
+      - name: Verify driver toolset present
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath
+          $toolsets = Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets\*" -Directory |
+            Select-Object -ExpandProperty Name
+          Write-Host "Toolsets: $($toolsets -join ', ')"
+          if ($toolsets -notcontains 'WindowsUserModeDriver10.0') {
+            throw "WindowsUserModeDriver10.0 toolset missing after WDK install"
+          }
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include\*\um\iddcx\*\IddCx.h" |
+            ForEach-Object { Write-Host "IddCx: $($_.FullName)" }
+
+      # -------------------------------------------------------------- build
+      # build.ps1 builds everything in order: driver (test-signed catalog),
+      # compositor, devcreate, edidoverride, app publish, then the setup exe
+      # that embeds all of it. Inf2CatUseLocalTime is already handled inside.
+      - name: Build all (Release)
+        shell: pwsh
+        run: .\build.ps1 -Configuration Release
+
+      # -------------------------------------------------------------- check
+      # CI runners execute elevated, so the shipping exe can run directly.
+      # /verify inspects the embedded payload and signature without changing
+      # anything; /selftest walks the wizard UI headlessly at several DPIs.
+      - name: Installer self-checks
+        shell: pwsh
+        run: |
+          $exe = "installer\setup\bin\x64\Release\DesktopSplitterSetup.exe"
+          & $exe /verify   | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "/verify failed ($LASTEXITCODE)" }
+          & $exe /selftest | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "/selftest failed ($LASTEXITCODE)" }
+
+      - name: Stamp artifact name
+        id: stamp
+        shell: pwsh
+        run: |
+          $version = "0.${{ github.run_number }}"
+          if ("${{ github.ref_type }}" -eq "tag") { $version = "${{ github.ref_name }}".TrimStart('v') }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Copy-Item "installer\setup\bin\x64\Release\DesktopSplitterSetup.exe" `
+                    "DesktopSplitterSetup-$version.exe"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopSplitterSetup-${{ steps.stamp.outputs.version }}
+          path: DesktopSplitterSetup-${{ steps.stamp.outputs.version }}.exe
+          compression-level: 0
+
+      # ------------------------------------------------------------ release
+      # Every push to the default branch refreshes a rolling "latest" pre-
+      # release; pushing a v* tag creates a real versioned release.
+      - name: Update rolling "latest" release
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (${{ steps.stamp.outputs.version }})
+          prerelease: true
+          body: |
+            Automatic build of commit ${{ github.sha }}.
+            Unsigned development build — the installer will ask you to trust
+            the development certificate. See README for details.
+          files: DesktopSplitterSetup-${{ steps.stamp.outputs.version }}.exe
+
+      - name: Create tagged release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DesktopSplitter ${{ github.ref_name }}
+          files: DesktopSplitterSetup-${{ steps.stamp.outputs.version }}.exe
+          generate_release_notes: true
