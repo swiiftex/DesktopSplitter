@@ -29,11 +29,18 @@ struct SegmentConfig {
     uint32_t     width = 0;       // expected capture width  (informational)
     uint32_t     height = 0;      // expected capture height (informational)
     PhysRect     physRect;
+    // config "showTaskbar" (absent = true). Windows 11 has no per-monitor
+    // taskbar toggle, so the compositor enforces this itself.
+    bool         showTaskbar = true;
 };
 
 struct AppConfig {
     std::wstring               physicalDevice;          // e.g. L"\\\\.\\DISPLAY1"
     uint32_t                   refreshMillihertz = 60000;
+    uint32_t                   primarySegment = 0;   // config "primarySegment"
+    // config "launchSegment": new app windows open here regardless of which
+    // segment is primary. -1 or absent = disabled.
+    int                        launchSegment = -1;
     std::vector<SegmentConfig> segments;
 };
 

@@ -1,149 +1,106 @@
-using System.Threading.Tasks;
 using DesktopSplitter.Interop;
 using DesktopSplitter.Models;
 using Microsoft.Win32;
 
 namespace DesktopSplitter.Services;
 
-/// <summary>Tri-state for a status row: we could not tell / yes / no.</summary>
+/// <summary>State of a status row.</summary>
 public enum CheckState
 {
+    /// <summary>Could not be determined.</summary>
     Unknown,
+
+    /// <summary>A capability or setting that is satisfied.</summary>
     Ok,
+
+    /// <summary>A capability or setting that is NOT satisfied.</summary>
     No,
+
+    /// <summary>
+    /// Purely informational — neither good nor bad. Used for "Currently hidden: no", which is the
+    /// normal resting state and must not read as a problem.
+    /// </summary>
+    Info,
 }
 
 public sealed record StatusRow(string Label, CheckState State, string Detail);
 
 /// <summary>Everything the display-hiding panel shows, gathered in one pass.</summary>
 public sealed record HidingSnapshot(
-    StatusRow OsSupport,
-    StatusRow MonitorHideable,
-    StatusRow OverrideApplied,
-    StatusRow FeatureFlag,
+    StatusRow SystemSupport,
+    StatusRow MonitorSupport,
+    StatusRow CurrentlySpecialized,
+    StatusRow Intent,
     bool SplitActive,
-    bool HelperFound,
-    string HelperPath)
+    bool Available,
+    bool EnabledNow,
+    bool IntentOn)
 {
-    public IReadOnlyList<StatusRow> Rows => new[] { OsSupport, MonitorHideable, OverrideApplied, FeatureFlag };
-
-    public bool OsSupported => OsSupport.State == CheckState.Ok;
-    public bool OverrideIsOurs => OverrideApplied.State == CheckState.Ok;
-    public bool FlagOn => FeatureFlag.State == CheckState.Ok;
+    public IReadOnlyList<StatusRow> Rows => new[] { SystemSupport, MonitorSupport, CurrentlySpecialized, Intent };
 }
 
 /// <summary>
-/// Read-only probes behind the "Display hiding" panel. Everything here is safe to call at any
-/// time — no elevation, no device changes.
+/// Read-only probes behind the "Display hiding" panel, built on DisplayConfig monitor
+/// specialization (GET, type 12) — the supported mechanism that Settings &gt; Advanced display
+/// uses. Nothing here changes display state.
 /// </summary>
 public static class HidingStatus
 {
-    /// <summary>Editions where <c>DisplayManager</c> allows driving a specialized display.</summary>
-    public static readonly string[] SupportedEditions =
-    {
-        "ProfessionalWorkstation", "Enterprise", "IoTEnterprise",
-    };
-
-    private const string WindowsNtKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
     private const string DeskSplitKey = @"SOFTWARE\DesktopSplitter";
     private const string HideFlagValue = "HidePhysicalDisplay";
 
-    public static async Task<HidingSnapshot> QueryAsync(MonitorInfo? selected)
+    public static HidingSnapshot Query(MonitorInfo? selected)
     {
-        StatusRow os = CheckOsEdition();
-        StatusRow monitor = await CheckMonitorHideableAsync(selected).ConfigureAwait(false);
-        StatusRow over = CheckOverrideApplied(selected);
-        StatusRow flag = CheckFeatureFlag();
+        bool intentOn = ReadIntent();
+        StatusRow intent = intentOn
+            ? new StatusRow("Hide during Apply", CheckState.Ok,
+                "On — Apply will remove the physical monitor from the desktop once the split is up.")
+            : new StatusRow("Hide during Apply", CheckState.No,
+                "Off — the compositor just covers the physical monitor (the default).");
 
-        bool splitActive = IsSplitActive();
-        bool helperFound = EdidGuardClient.TryFindExecutable(out string helperPath);
+        if (selected is null) return Degenerate("No monitor selected.", intent, intentOn);
 
-        return new HidingSnapshot(os, monitor, over, flag, splitActive, helperFound,
-                                  helperFound ? helperPath : EdidGuardClient.ExpectedPath);
-    }
-
-    // ------------------------------------------------------------------ individual checks
-
-    public static StatusRow CheckOsEdition()
-    {
-        string edition = ReadString(Registry.LocalMachine, WindowsNtKey, "EditionID") ?? string.Empty;
-        string build = ReadString(Registry.LocalMachine, WindowsNtKey, "CurrentBuildNumber") ?? "?";
-
-        if (string.IsNullOrEmpty(edition))
-            return new StatusRow("Windows edition", CheckState.Unknown, "Could not read EditionID.");
-
-        bool supported = SupportedEditions.Contains(edition, StringComparer.OrdinalIgnoreCase);
-        return new StatusRow(
-            "Windows edition",
-            supported ? CheckState.Ok : CheckState.No,
-            supported
-                ? $"{edition} (build {build}) — specialized displays allowed."
-                : $"{edition} (build {build}) — needs one of {string.Join(", ", SupportedEditions)}.");
-    }
-
-    private static async Task<StatusRow> CheckMonitorHideableAsync(MonitorInfo? selected)
-    {
-        if (selected is null)
-            return new StatusRow("Monitor is hideable", CheckState.Unknown, "No monitor selected.");
-
-        IReadOnlyDictionary<string, MonitorUsage> map = await DisplayUsage.BuildMapAsync().ConfigureAwait(false);
-        MonitorUsage usage = DisplayUsage.Lookup(map, selected.MonitorDevicePath);
-
-        return usage switch
+        if (!MonitorSpecialization.TryGet(selected, out SpecializationState state, out int rc))
         {
-            MonitorUsage.SpecialPurpose => new StatusRow("Monitor is hideable", CheckState.Ok,
-                $"{selected.DisplayLabel}: UsageKind = SpecialPurpose — already out of the desktop."),
-            MonitorUsage.Standard => new StatusRow("Monitor is hideable", CheckState.No,
-                $"{selected.DisplayLabel}: UsageKind = Standard — enable hiding to mark it specialized."),
-            _ => new StatusRow("Monitor is hideable", CheckState.Unknown,
-                $"{selected.DisplayLabel}: UsageKind could not be read."),
-        };
-    }
-
-    private static StatusRow CheckOverrideApplied(MonitorInfo? selected)
-    {
-        if (selected is null)
-            return new StatusRow("DesktopSplitter override", CheckState.Unknown, "No monitor selected.");
-
-        try
-        {
-            IReadOnlyDictionary<string, EdidReader.DevnodeEdidState> map = EdidReader.BuildOverrideStateMap();
-            EdidReader.DevnodeEdidState? state = EdidReader.LookupOverrideState(map, selected.MonitorDevicePath);
-
-            if (state is null)
-                return new StatusRow("DesktopSplitter override", CheckState.Unknown,
-                    "Could not read the monitor's Device Parameters key.");
-
-            if (state.HasDeskSplitBackup)
-                return new StatusRow("DesktopSplitter override", CheckState.Ok,
-                    "Applied by DesktopSplitter (EDID_OVERRIDE_DSBACKUP present).");
-
-            return new StatusRow("DesktopSplitter override", CheckState.No,
-                state.HasOverride
-                    ? "An EDID_OVERRIDE exists but was not written by DesktopSplitter — leaving it alone."
-                    : "Not applied.");
+            string detail = $"DisplayConfig GET (type 12) failed with error {rc}" +
+                            (rc == MonitorSpecialization.ERROR_INVALID_PARAMETER
+                                ? " — this Windows build may not support monitor specialization."
+                                : ".");
+            return Degenerate(detail, intent, intentOn);
         }
-        catch (Exception ex)
-        {
-            return new StatusRow("DesktopSplitter override", CheckState.Unknown, "Read failed: " + ex.Message);
-        }
+
+        // Capability rows say what is POSSIBLE. The state row says what is HAPPENING. Keeping the
+        // two visibly distinct matters: a green "supports hiding" was previously misread as
+        // "already hiding".
+        var system = new StatusRow("Windows can hide displays",
+            state.AvailableForSystem ? CheckState.Ok : CheckState.No,
+            state.AvailableForSystem
+                ? "Yes — this Windows edition allows displays to be removed from the desktop."
+                : "No — this Windows edition does not allow displays to be removed from the desktop.");
+
+        var monitor = new StatusRow("This monitor can be hidden",
+            state.AvailableForMonitor ? CheckState.Ok : CheckState.No,
+            state.AvailableForMonitor
+                ? $"Yes — {selected.DisplayLabel} is eligible (capability only; GET raw 0x{state.RawValue:X})."
+                : $"No — {selected.DisplayLabel} is not eligible (GET raw 0x{state.RawValue:X}).");
+
+        var current = new StatusRow("Hidden right now",
+            state.EnabledNow ? CheckState.Ok : CheckState.Info,
+            state.EnabledNow
+                ? $"YES — {selected.DisplayLabel} is off the desktop right now."
+                : $"No — {selected.DisplayLabel} is a normal desktop display right now.");
+
+        return new HidingSnapshot(system, monitor, current, intent,
+                                  IsSplitActive(), state.Available, state.EnabledNow, intentOn);
     }
 
-    public static StatusRow CheckFeatureFlag()
-    {
-        int? value = ReadDword(Registry.LocalMachine, DeskSplitKey, HideFlagValue);
-        return value switch
-        {
-            null => new StatusRow("HidePhysicalDisplay flag", CheckState.No,
-                $@"Not set (HKLM\{DeskSplitKey}\{HideFlagValue}) — the compositor uses the window path."),
-            0 => new StatusRow("HidePhysicalDisplay flag", CheckState.No,
-                "Set to 0 — the compositor uses the window path."),
-            _ => new StatusRow("HidePhysicalDisplay flag", CheckState.Ok,
-                $"Set to {value} — the compositor will try the specialized presenter."),
-        };
-    }
+    private static HidingSnapshot Degenerate(string detail, StatusRow intent, bool intentOn)
+        => new(new StatusRow("Windows can hide displays", CheckState.Unknown, detail),
+               new StatusRow("This monitor can be hidden", CheckState.Unknown, detail),
+               new StatusRow("Hidden right now", CheckState.Unknown, detail),
+               intent, IsSplitActive(), false, false, intentOn);
 
-    /// <summary>A split must be reverted before the monitor's EDID can be messed with.</summary>
+    /// <summary>A split must be reverted before hiding can be enabled or disabled.</summary>
     public static bool IsSplitActive()
     {
         try
@@ -157,18 +114,60 @@ public static class HidingStatus
         return CompositorLauncher.IsRunning();
     }
 
-    // ------------------------------------------------------------------ registry helpers
+    // ------------------------------------------------------------------ intent flag
 
-    private static string? ReadString(RegistryKey root, string subKey, string name)
+    /// <summary>
+    /// Reads the "hide during Apply" intent. HKLM wins when present (the installer or an admin
+    /// may have set it, and it is what a standalone dscomp run reads); otherwise the per-user
+    /// settings file, which never needs elevation.
+    /// </summary>
+    public static bool ReadIntent()
     {
+        int? machine = ReadDword(Registry.LocalMachine, DeskSplitKey, HideFlagValue);
+        if (machine is not null) return machine.Value != 0;
+        return SettingsStore.Load()?.HidePhysicalDisplay ?? false;
+    }
+
+    public sealed record IntentWriteResult(bool Success, bool MachineWideWritten, string Message);
+
+    /// <summary>
+    /// Records the intent. The per-user copy always succeeds; the HKLM mirror is best-effort and
+    /// its failure is reported, never worked around by elevating.
+    /// </summary>
+    public static IntentWriteResult WriteIntent(bool enabled)
+    {
+        AppSettings settings = SettingsStore.Load() ?? new AppSettings();
+        settings.HidePhysicalDisplay = enabled;
         try
         {
-            using RegistryKey? key = root.OpenSubKey(subKey);
-            return key?.GetValue(name) as string;
+            SettingsStore.Save(settings);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            return new IntentWriteResult(false, false, "Could not save the setting: " + ex.Message);
+        }
+
+        try
+        {
+            using RegistryKey key = Registry.LocalMachine.CreateSubKey(DeskSplitKey, writable: true)
+                                   ?? throw new UnauthorizedAccessException("key could not be opened");
+            key.SetValue(HideFlagValue, enabled ? 1 : 0, RegistryValueKind.DWord);
+            return new IntentWriteResult(true, true,
+                $"Display hiding {(enabled ? "enabled" : "disabled")} (saved for this user and machine-wide).");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return new IntentWriteResult(true, false,
+                $"Display hiding {(enabled ? "enabled" : "disabled")} for this user. " +
+                $@"The machine-wide flag (HKLM\{DeskSplitKey}\{HideFlagValue}) needs administrator " +
+                "rights and was left alone — DesktopSplitter passes --specialized to the compositor " +
+                "itself, so this only matters if you run dscomp.exe standalone.");
+        }
+        catch (Exception ex)
+        {
+            return new IntentWriteResult(true, false,
+                $"Display hiding {(enabled ? "enabled" : "disabled")} for this user; the machine-wide " +
+                $"flag could not be written: {ex.Message}");
         }
     }
 

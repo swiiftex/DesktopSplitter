@@ -1,0 +1,19 @@
+# DesktopSplitter product version - THE SINGLE SOURCE OF TRUTH.
+#
+# Format: MAJOR.MINOR.PATCH
+#
+#   PATCH  Bumped AUTOMATICALLY by build.ps1 on every successful build
+#          (0.5.1 -> 0.5.2 -> 0.5.3 ...). Never edit it by hand.
+#   MINOR  Bump BY HAND for new functionality or a notable change.
+#   MAJOR  Bump BY HAND for a large update or a breaking change.
+#
+# To change MAJOR/MINOR, do NOT edit the number below directly - run:
+#
+#     .\build.ps1 -SetVersion 0.6.0
+#
+# so every generated artefact is regenerated from it in the same step.
+# Use  .\build.ps1 -NoVersionBump  to iterate without consuming a version.
+#
+# Everything below this comment block is parsed as the version: the last
+# non-empty, non-comment line wins.
+0.5.4

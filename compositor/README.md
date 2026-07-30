@@ -65,6 +65,116 @@ other or the render path.
 `dscomp.exe` is a GUI-subsystem app but attaches to the launching console, so
 logs go to stderr (and always to `OutputDebugString`). `2> log.txt` works.
 
+## Contracts for the control app
+
+### Exit codes
+
+Defined in `src/PresenterSelect.h` (`ds::exitcode`) and unit-tested by
+`tests/PresenterProbe`. Startup failures and runtime failures are in separate
+ranges so "never started" is always distinguishable from "started, then died".
+
+| Code | Meaning |
+| --- | --- |
+| 0 | clean shutdown — stop event, `WM_CLOSE`, or Ctrl+C |
+| 1 | unknown command-line argument |
+| 2 | `config.json` missing or invalid |
+| 3 | `physicalDevice` is not attached |
+| 4 | could not create the compositor window |
+| 5 | device / presenter / pipeline initialisation failed |
+| **20** | **display lost while presenting** — the compositor *was* showing frames and then stopped (specialized display stopped accepting scanouts, or the D3D device was removed). The app should treat this as "the hidden display went dark" and un-specialize it. |
+
+Note that a *failed acquisition* is *not* code 20: dscomp falls back to the
+window path, keeps running, and exits 0. Code 20 only ever means "it worked and
+then it didn't".
+
+### Suspend / resume IPC (secure desktop, lock screen)
+
+With the split active, Windows' primary display is a **virtual** monitor, and
+the only way the user sees it is *through* the compositor on the physical panel.
+UAC prompts, Ctrl+Alt+Del and the lock screen render on the **secure desktop**,
+which Desktop Duplication cannot capture by design — so the compositor goes
+blank at the exact moment a dialog the user must act on appears, on a display
+they cannot see.
+
+dscomp detects these transitions, hides itself and drops the cursor clip, and
+tells the control app over two named events:
+
+| Event | Meaning |
+| --- | --- |
+| `Global\DeskSplitSuspendRequest` | signalled while the split should be suspended |
+| `Global\DeskSplitResumeRequest` | signalled while the split should be active |
+
+- **Manual-reset and mutually exclusive.** Exactly one is signalled at any time,
+  so the app can either wait on one or poll both to read the current state.
+- DACL: Administrators/SYSTEM full; **Authenticated Users
+  `EVENT_MODIFY_STATE | SYNCHRONIZE | READ_CONTROL`**, so an unelevated app can
+  wait and read. Falls back to `Local\` if dscomp cannot create in `Global\`.
+- `DeskSplitResumeRequest` starts **signalled** (not suspended), and dscomp
+  signals resume on shutdown, so the app can never be stranded in a suspended
+  display layout because the compositor exited.
+
+**What the app is expected to do on suspend** (compositor cannot do it — it does
+not own display config): temporarily make the **physical** monitor primary again
+so the secure-desktop dialog lands somewhere visible, then restore the virtual
+primary on resume. Until the app implements that half, hiding alone is *not*
+enough — see "Findings" below.
+
+### `Global\DeskSplitSpecializedLive`
+
+In specialized mode, dscomp signals this named event **after the first composite
+frame is actually scanned out to the hidden display**. It is the success signal
+for the app's keep/revert guard: *signalled within N seconds of launch* means
+the hidden display is genuinely showing content.
+
+- Manual-reset, created fresh and **reset at startup of every compositor run**,
+  so a stale signal from a previous run can never be mistaken for this one.
+- DACL: Administrators/SYSTEM full control; **Authenticated Users `SYNCHRONIZE`
+  only** — the app waits on it and cannot set it.
+- Created in `Global\`; falls back to `Local\` if dscomp is unelevated and has
+  no `SeCreateGlobalPrivilege`. The chosen name is logged.
+- Not signalled at all in window mode.
+
+### `GET_MONITOR_SPECIALIZATION` bit meanings
+
+`tests/DisplayProbe` reads this and prints the raw value; the app will P/Invoke
+it itself. The struct is **not** in the documented constants table, so replicate
+the bits exactly:
+
+```c
+// DisplayConfigGetDeviceInfo, header.type = 12  (SET is 13)
+// header.adapterId / header.id come from QueryDisplayConfig's targetInfo.
+struct {
+    DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    union {
+        struct {
+            UINT32 isSpecializationEnabled            : 1;  // bit 0 (0x1)
+            UINT32 isSpecializationAvailableForMonitor: 1;  // bit 1 (0x2)
+            UINT32 isSpecializationAvailableForSystem : 1;  // bit 2 (0x4)
+            UINT32 reserved                           : 29;
+        } bits;
+        UINT32 value;
+    };
+};
+```
+
+| Bit | Mask | Meaning |
+| --- | --- | --- |
+| 0 | `0x1` | specialization is **enabled right now** for this monitor |
+| 1 | `0x2` | specialization is **available for this monitor** (the panel is eligible) |
+| 2 | `0x4` | specialization is **available for this system** (the Windows SKU allows it) |
+
+So `0x6` = eligible on both counts but not currently enabled — the state to act
+on. `0x7` = already specialized. Anything with bit 1 or bit 2 clear means the
+toggle will not be offered and `SET` should not be attempted.
+
+**Do not use `DisplayMonitor.UsageKind` as a success signal.** A display
+specialized through this route is still reported as `Standard`
+([open Windows bug](https://github.com/microsoft/Windows-classic-samples/issues/191)).
+dscomp deliberately no longer gates on it. Use the `GET` bits, and
+`DeskSplitSpecializedLive` for end-to-end proof.
+
+## Shutdown
+
 It exits on any of:
 
 - the named event `Global\DeskSplitCompositorStop`

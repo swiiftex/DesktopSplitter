@@ -96,11 +96,13 @@ WindowRescuer::~WindowRescuer() {
 }
 
 bool WindowRescuer::Start(const std::wstring& coveredDevice,
-                          const std::wstring& targetDevice) {
+                          const std::wstring& targetDevice,
+                          const std::wstring& launchDevice) {
     if (m_thread.joinable()) return true;
 
     m_coveredDevice = coveredDevice;
     m_targetDevice = targetDevice;
+    m_launchDevice = launchDevice;
     m_ownPid = ::GetCurrentProcessId();
     m_ready = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_instance = this;
@@ -201,6 +203,9 @@ void WindowRescuer::HandleEvent(DWORD event, HWND hwnd, LONG idObject, LONG idCh
         m_debounceTimer = ::SetTimer(nullptr, m_debounceTimer, kDebounceMs, nullptr);
         return;
     }
+    // Covered-region rescue applies to any of the events; launch placement is
+    // deliberately restricted to newly shown windows.
+    if (event == EVENT_OBJECT_SHOW) EvaluateLaunch(hwnd);
     Evaluate(hwnd);
 }
 
@@ -236,6 +241,12 @@ bool WindowRescuer::RefreshRects() {
             m_targetWork = e.work;
             haveTarget = true;
         }
+        if (!m_launchDevice.empty() &&
+            ::_wcsicmp(e.device.c_str(), m_launchDevice.c_str()) == 0) {
+            m_launchWork = e.work;
+            m_launchMonitor = e.rect;
+            m_haveLaunch = !RectIsEmpty(e.work);
+        }
     }
     m_rectsValid = haveCovered && haveTarget && !RectIsEmpty(m_coveredRect) &&
                    !RectIsEmpty(m_targetWork);
@@ -262,7 +273,8 @@ bool WindowRescuer::RateLimit(HWND hwnd) {
 // Ordered cheapest-first: EVENT_OBJECT_SHOW fires for every window on the
 // system, and almost none of them are on the covered monitor, so the geometry
 // test runs before the class lookup and long before OpenProcess.
-bool WindowRescuer::ShouldRescue(HWND hwnd, RECT& windowRect) const {
+// Everything except the geometry test, shared by both behaviours.
+bool WindowRescuer::PassesWindowFilters(HWND hwnd, RECT& windowRect) const {
     if (!::IsWindow(hwnd) || !::IsWindowVisible(hwnd)) return false;
 
     const LONG_PTR style = ::GetWindowLongPtrW(hwnd, GWL_STYLE);
@@ -277,13 +289,68 @@ bool WindowRescuer::ShouldRescue(HWND hwnd, RECT& windowRect) const {
         (windowRect.bottom - windowRect.top) < kMinRescueH) {
         return false;
     }
-    if (!IsMostlyInside(windowRect, m_coveredRect)) return false;
-
     if (::GetAncestor(hwnd, GA_ROOT) != hwnd) return false;      // top-level only
     if (IsExcludedClass(hwnd)) return false;
     if (IsCloaked(hwnd)) return false;
     if (IsExcludedProcess(hwnd, m_ownPid)) return false;
     return true;
+}
+
+bool WindowRescuer::ShouldRescue(HWND hwnd, RECT& windowRect) const {
+    if (!PassesWindowFilters(hwnd, windowRect)) return false;
+    return IsMostlyInside(windowRect, m_coveredRect);
+}
+
+// New windows open on the launch segment. Deliberately driven ONLY by
+// EVENT_OBJECT_SHOW: once a window exists the user must stay free to drag it
+// to another segment and have it stay there, which is the opposite of the
+// covered-region rescuer.
+void WindowRescuer::EvaluateLaunch(HWND hwnd) {
+    if (m_launchDevice.empty()) return;
+    if (!RefreshRects() || !m_haveLaunch) return;
+
+    RECT wr = {};
+    if (!PassesWindowFilters(hwnd, wr)) return;
+
+    // Already on the launch segment: nothing to do.
+    if (IsMostlyInside(wr, m_launchMonitor)) return;
+
+    // FULLSCREEN SAFETY: a window that already covers a whole monitor is a
+    // fullscreen (often exclusive) app. Moving one of those causes mode thrash
+    // and can crash games, so never touch it - it follows Windows' primary.
+    HMONITOR mon = ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+    if (mon) {
+        MONITORINFO mi = {};
+        mi.cbSize = sizeof(mi);
+        if (::GetMonitorInfoW(mon, &mi)) {
+            if (wr.left <= mi.rcMonitor.left && wr.top <= mi.rcMonitor.top &&
+                wr.right >= mi.rcMonitor.right && wr.bottom >= mi.rcMonitor.bottom) {
+                DS_VERB(L"launch: skipping a fullscreen-sized window - exclusive "
+                        L"fullscreen follows Windows' primary display");
+                return;
+            }
+        }
+    }
+    if (!RateLimit(hwnd)) return;
+
+    wchar_t title[128] = {};
+    ::GetWindowTextW(hwnd, title, _countof(title));
+    const RECT before = wr;
+    const bool maximized = ::IsZoomed(hwnd) != FALSE;
+    if (maximized) {
+        ::ShowWindow(hwnd, SW_RESTORE);
+        if (!::GetWindowRect(hwnd, &wr)) return;
+    }
+    const RECT place = ComputeRescuePlacement(m_launchWork, wr);
+    if (!::SetWindowPos(hwnd, nullptr, place.left, place.top,
+                        place.right - place.left, place.bottom - place.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE)) {
+        return;
+    }
+    if (maximized) ::ShowWindow(hwnd, SW_MAXIMIZE);
+    DS_VERB(L"launch: moved '%s' from (%ld,%ld) to the launch segment (%ld,%ld)%s",
+            title, before.left, before.top, place.left, place.top,
+            maximized ? L" (re-maximized)" : L"");
 }
 
 void WindowRescuer::Evaluate(HWND hwnd) {

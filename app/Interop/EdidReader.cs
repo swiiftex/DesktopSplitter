@@ -58,31 +58,6 @@ public static class EdidReader
     public static bool TryRead(string monitorDevicePath, out EdidInfo? edid)
         => TryLookup(BuildMap(), monitorDevicePath, out edid);
 
-    /// <summary>
-    /// EDID-override markers on a monitor's devnode.
-    /// <paramref name="HasOverride"/> is Windows' standard EDID_OVERRIDE; <paramref name="HasDeskSplitBackup"/>
-    /// is EDID_OVERRIDE_DSBACKUP, which edidoverride.exe writes to stash the pre-DesktopSplitter
-    /// state — its presence is what identifies an override as OURS rather than the OEM's or a
-    /// hand-rolled one.
-    /// </summary>
-    public sealed record DevnodeEdidState(bool HasOverride, bool HasDeskSplitBackup);
-
-    /// <summary>Override-marker state for every present monitor, keyed like <see cref="BuildMap"/>.</summary>
-    public static IReadOnlyDictionary<string, DevnodeEdidState> BuildOverrideStateMap()
-        => Sweep(ReadOverrideState);
-
-    /// <summary>Looks up one monitor's override markers (interface path, then instance id).</summary>
-    public static DevnodeEdidState? LookupOverrideState(
-        IReadOnlyDictionary<string, DevnodeEdidState> map, string monitorDevicePath)
-    {
-        if (string.IsNullOrEmpty(monitorDevicePath) || map.Count == 0) return null;
-        if (map.TryGetValue(monitorDevicePath, out DevnodeEdidState? direct)) return direct;
-
-        string instanceId = DeviceInstanceIdFromInterfacePath(monitorDevicePath);
-        return !string.IsNullOrEmpty(instanceId) && map.TryGetValue(instanceId, out DevnodeEdidState? viaInstance)
-            ? viaInstance
-            : null;
-    }
 
     /// <summary>Looks up one monitor in an existing snapshot (interface path, then instance id).</summary>
     public static bool TryLookup(IReadOnlyDictionary<string, EdidInfo> map, string monitorDevicePath, out EdidInfo? edid)
@@ -262,43 +237,6 @@ public static class EdidReader
         }
     }
 
-    /// <summary>
-    /// Looks for the EDID override markers. Windows' own tooling stores EDID_OVERRIDE as a
-    /// SUBKEY (containing a value "0"), while simpler tools write it as a value directly under
-    /// Device Parameters — we accept either shape for both names so we stay compatible with
-    /// however edidoverride.exe ends up writing them.
-    /// </summary>
-    private static DevnodeEdidState? ReadOverrideState(IntPtr set, ref SP_DEVINFO_DATA devInfo)
-    {
-        IntPtr key = SetupDiOpenDevRegKey(set, ref devInfo, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-        if (key == INVALID_HANDLE_VALUE || key == IntPtr.Zero) return null;
-
-        try
-        {
-            return new DevnodeEdidState(
-                HasValueOrSubkey(key, "EDID_OVERRIDE"),
-                HasValueOrSubkey(key, "EDID_OVERRIDE_DSBACKUP"));
-        }
-        finally
-        {
-            RegCloseKey(key);
-        }
-    }
-
-    private static bool HasValueOrSubkey(IntPtr key, string name)
-    {
-        uint size = 0;
-        int rc = RegQueryValueEx(key, name, IntPtr.Zero, out _, IntPtr.Zero, ref size);
-        if (rc == ERROR_SUCCESS || rc == ERROR_MORE_DATA) return true;
-
-        if (RegOpenKeyEx(key, name, 0, KEY_READ, out IntPtr sub) == ERROR_SUCCESS)
-        {
-            RegCloseKey(sub);
-            return true;
-        }
-        return false;
-    }
-
     private static byte[]? ReadBinaryValue(IntPtr key, string valueName)
     {
         uint size = 0;
@@ -402,10 +340,6 @@ public static class EdidReader
     private static extern int RegQueryValueEx(
         IntPtr hKey, string lpValueName, IntPtr lpReserved,
         out uint lpType, IntPtr lpData, ref uint lpcbData);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = false, EntryPoint = "RegOpenKeyExW")]
-    private static extern int RegOpenKeyEx(
-        IntPtr hKey, string lpSubKey, uint ulOptions, uint samDesired, out IntPtr phkResult);
 
     [DllImport("advapi32.dll", SetLastError = false)]
     private static extern int RegCloseKey(IntPtr hKey);

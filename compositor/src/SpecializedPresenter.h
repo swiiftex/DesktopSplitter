@@ -25,7 +25,23 @@ public:
 
     // Fills 'out' with exactly how far acquisition got, so the caller can log a
     // precise fallback reason. Returns true only when fully ready to present.
-    bool TryAcquire(const PresenterInit& init, SpecializedAvailability& out);
+    //
+    // 'waitSeconds' > 0 polls until the display becomes acquirable, which is
+    // what lets the user start dscomp FIRST and then remove the display from
+    // the desktop: the black gap is then a blink rather than an open-ended dark
+    // screen. 0 means a single attempt (today's behaviour).
+    //
+    // 'frameDeadlineSeconds' bounds the "acquired but never presents" case: a
+    // specialized display receiving no frames is just a black panel, so after
+    // the deadline Failed() goes true and the process exits kDisplayLost.
+    bool TryAcquire(const PresenterInit& init, SpecializedAvailability& out,
+                    int waitSeconds, int frameDeadlineSeconds);
+
+    // Resolves and caches the monitor's device interface path. MUST be called
+    // while the display is still on the desktop - once it is specialized it
+    // disappears from EnumDisplayDevices and can no longer be resolved by GDI
+    // device name.
+    bool CacheTargetIdentity(const std::wstring& gdiDeviceName);
 
     bool Initialize(const PresenterInit& init) override;
     void Shutdown() override;
@@ -39,7 +55,13 @@ public:
     // Scanout is submitted with a sync interval, so the display paces us.
     bool SelfPaced() const override { return true; }
 
+    // True once the display has stopped accepting scanouts for long enough to
+    // call it lost. The compositor then exits with exitcode::kDisplayLost.
+    bool Failed() const override;
+
 private:
+    bool TryAcquireOnce(const PresenterInit& init, SpecializedAvailability& out);
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

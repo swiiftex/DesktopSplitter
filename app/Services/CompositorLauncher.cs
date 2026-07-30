@@ -21,6 +21,46 @@ public static class CompositorLauncher
     public const string StopEventName = @"Global\DeskSplitCompositorStop";
 
     /// <summary>
+    /// The compositor signals this after its FIRST successful specialized scan-out. This — not
+    /// WinRT UsageKind, which Windows reports unreliably — is the authoritative "hiding actually
+    /// works" signal.
+    /// </summary>
+    public const string SpecializedLiveEventName = @"Global\DeskSplitSpecializedLive";
+
+    /// <summary>Command-line switch that forces the specialized presenter for one run.</summary>
+    public const string SpecializedArgument = "--specialized";
+
+    /// <summary>
+    /// Tells the compositor to keep polling until the target becomes specialized, then acquire —
+    /// falling back to the window path if the wait expires. This is what lets the compositor be
+    /// already waiting when the user flips Windows' "Remove display from desktop" toggle, so the
+    /// panel is never left black with nothing drawing to it.
+    /// </summary>
+    public const string WaitForTargetArgument = "--wait-for-target";
+
+    /// <summary>Acquired but no first frame within N seconds -> clean release and exit 20.</summary>
+    public const string FrameDeadlineArgument = "--frame-deadline";
+
+    /// <summary>Seconds the compositor waits for the display to become specialized.</summary>
+    public const int WaitForTargetSeconds = 90;
+
+    /// <summary>Seconds the compositor allows between acquisition and the first frame.</summary>
+    public const int FrameDeadlineSeconds = 10;
+
+    /// <summary>Outcome of waiting for the compositor to confirm specialized presentation.</summary>
+    public enum SpecializedWait
+    {
+        /// <summary>The compositor scanned out through the specialized path.</summary>
+        Live,
+
+        /// <summary>The compositor exited before confirming.</summary>
+        CompositorExited,
+
+        /// <summary>Nothing was signalled inside the deadline.</summary>
+        TimedOut,
+    }
+
+    /// <summary>
     /// The compositor MSBuild project outputs to compositor\build\x64\{Configuration}\dscomp.exe.
     /// Release is preferred; Debug is accepted so a dev build still launches.
     /// </summary>
@@ -101,8 +141,61 @@ public static class CompositorLauncher
         }
     }
 
+    /// <summary>
+    /// Waits for the compositor to signal <see cref="SpecializedLiveEventName"/>, while watching
+    /// for it dying first. Any early exit is treated as failure regardless of the exit code, so
+    /// this stays correct whatever code the compositor reserves for a post-acquisition failure;
+    /// the code itself is logged.
+    /// </summary>
+    public static SpecializedWait WaitForSpecializedLive(
+        Process compositor, TimeSpan timeout, CancellationToken ct, Action<string>? log = null)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        EventWaitHandle? live = null;
+
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (live is null &&
+                    EventWaitHandle.TryOpenExisting(SpecializedLiveEventName, out EventWaitHandle? opened))
+                {
+                    live = opened;
+                    log?.Invoke($"Opened {SpecializedLiveEventName}.");
+                }
+
+                if (live is not null && live.WaitOne(TimeSpan.Zero)) return SpecializedWait.Live;
+
+                if (compositor.HasExited)
+                {
+                    log?.Invoke($"Compositor exited with code {compositor.ExitCode} before confirming " +
+                                "specialized presentation.");
+                    return SpecializedWait.CompositorExited;
+                }
+
+                Thread.Sleep(100);
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            log?.Invoke($"WARNING: {SpecializedLiveEventName} exists but could not be opened (DACL).");
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            // Never created — falls through to the timeout result.
+        }
+        finally
+        {
+            live?.Dispose();
+        }
+
+        return SpecializedWait.TimedOut;
+    }
+
     /// <summary>Starts the compositor. Throws <see cref="CompositorNotFoundException"/> if missing.</summary>
-    public static Process Start()
+    public static Process Start(params string[] arguments)
     {
         if (!TryFindExecutable(out string exe))
         {
@@ -119,6 +212,7 @@ public static class CompositorLauncher
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        foreach (string argument in arguments) psi.ArgumentList.Add(argument);
 
         Process? p = Process.Start(psi);
         if (p is null)

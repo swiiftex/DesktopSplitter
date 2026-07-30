@@ -28,6 +28,8 @@ public sealed class MainViewModel : ObservableObject
     private double _canvasHeight = 200;
     private bool _isBusy;
     private bool _suppressSegmentRebuild;
+    private IApplyConfirmer? _applyConfirmer;
+    private SplitSuspensionWatcher? _suspensionWatcher;
 
     /// <summary>Set while the VM itself is writing segment sizes, to stop feedback loops.</summary>
     private bool _editorSuspended;
@@ -57,7 +59,7 @@ public sealed class MainViewModel : ObservableObject
 
         _selectedLayout = Layouts[0];
 
-        Hiding = new HidingViewModel(() => SelectedMonitor, () => Monitors.ToList(), AppendStatus);
+        Hiding = new HidingViewModel(() => SelectedMonitor, AppendStatus);
 
         LoadMonitors(announce: false);
         RestoreSettings();
@@ -65,13 +67,185 @@ public sealed class MainViewModel : ObservableObject
         RefreshCompositorStatus();
 
         AppendStatus("Ready.");
-        _ = Hiding.RefreshAsync();
+
+        // If a previous session died while the physical monitor was hidden, put it back.
+        _ = RecoverThenRefreshAsync();
     }
 
     // ------------------------------------------------------------------ bound state
 
     /// <summary>The "Display hiding (experimental)" panel.</summary>
     public HidingViewModel Hiding { get; }
+
+    /// <summary>Informational assembly version, produced by the shared versioning build step.</summary>
+    public static string VersionText { get; } = ReadVersion();
+
+    private static string ReadVersion()
+    {
+        try
+        {
+            System.Reflection.Assembly assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            string? informational = System.Reflection.CustomAttributeExtensions
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)
+                ?.InformationalVersion;
+
+            // Strip any "+<commit>" source-revision suffix the SDK appends.
+            if (!string.IsNullOrWhiteSpace(informational))
+            {
+                int plus = informational.IndexOf('+');
+                return "v" + (plus > 0 ? informational[..plus] : informational);
+            }
+            return "v" + (assembly.GetName().Version?.ToString() ?? "1.0.0");
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Supplied by the view once it exists; enables the confirmation countdown.</summary>
+    public void AttachConfirmer(IApplyConfirmer confirmer) => _applyConfirmer = confirmer;
+
+    // ------------------------------------------------------------------ suspend / resume
+
+    /// <summary>
+    /// Starts handing primary back to the physical monitor whenever the compositor reports a
+    /// secure desktop, lock screen, or the manual Ctrl+Alt+Shift+S toggle.
+    /// </summary>
+    private void StartSuspensionWatcher()
+    {
+        AppSettings? settings = SettingsStore.Load();
+        if (settings is null) return;
+
+        string activePrimary = settings.AppliedPrimaryDevice;
+        string physicalPrimary = string.IsNullOrEmpty(settings.PreviousPrimaryDevice)
+            ? settings.PhysicalDevice
+            : settings.PreviousPrimaryDevice;
+
+        _suspensionWatcher ??= new SplitSuspensionWatcher(_progress);
+        _suspensionWatcher.Start(activePrimary, physicalPrimary);
+    }
+
+    /// <summary>
+    /// Stops the watcher. A Revert restores primary itself, so it must not also be restored here —
+    /// that would be pointless extra display churn.
+    /// </summary>
+    private void StopSuspensionWatcher(bool restorePrimary)
+    {
+        _suspensionWatcher?.Stop(restorePrimary);
+    }
+
+    // ------------------------------------------------------------------ preferences
+
+    private bool _startWithWindows;
+    private bool _applyOnStartup;
+
+    /// <summary>Backed by the HKCU Run key, which is read live so external changes show up.</summary>
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (!SetProperty(ref _startWithWindows, value)) return;
+            StartupRegistration.Set(value, _progress);
+            PersistPreferences();
+            // Re-read: if the write failed, the checkbox must not lie.
+            bool actual = StartupRegistration.IsEnabled();
+            if (actual != value) SetProperty(ref _startWithWindows, actual, nameof(StartWithWindows));
+        }
+    }
+
+    /// <summary>Re-apply the saved configuration automatically at startup.</summary>
+    public bool ApplyOnStartup
+    {
+        get => _applyOnStartup;
+        set
+        {
+            if (!SetProperty(ref _applyOnStartup, value)) return;
+            PersistPreferences();
+        }
+    }
+
+    /// <summary>Reads preference state from the registry and settings file.</summary>
+    public void LoadPreferences()
+    {
+        StartupRegistration.RefreshIfStale(_progress);
+        _startWithWindows = StartupRegistration.IsEnabled();
+        _applyOnStartup = SettingsStore.Load()?.ApplyOnStartup ?? false;
+        OnPropertyChanged(nameof(StartWithWindows));
+        OnPropertyChanged(nameof(ApplyOnStartup));
+    }
+
+    private void PersistPreferences()
+    {
+        try
+        {
+            AppSettings settings = SettingsStore.Load() ?? new AppSettings();
+            settings.StartWithWindows = _startWithWindows;
+            settings.ApplyOnStartup = _applyOnStartup;
+            SettingsStore.Save(settings);
+        }
+        catch (Exception ex)
+        {
+            AppendStatus("Could not save preferences: " + ex.Message);
+        }
+    }
+
+    // ------------------------------------------------------------------ startup / shutdown
+
+    /// <summary>
+    /// Re-applies the saved configuration if it was live when we last exited, or if the user
+    /// asked for auto-apply. Never prompts — this is not a user-initiated change.
+    /// </summary>
+    public async Task AutoApplyOnStartupAsync()
+    {
+        AppSettings? settings = SettingsStore.Load();
+        bool splitActive = await Task.Run(HidingStatus.IsSplitActive).ConfigureAwait(true);
+
+        if (!ApplyService.ShouldAutoApplyOnStartup(settings, splitActive)) return;
+        if (!RestoreSettings(settings))
+        {
+            AppendStatus("Skipping auto-apply: the saved monitor is not connected.");
+            return;
+        }
+
+        AppendStatus("--- Re-applying the saved configuration (no confirmation at startup) ---");
+        await ApplyAsync(promptToConfirm: false).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Tears the split down on exit so the desktop is never left split with nothing driving it.
+    /// Best effort and time-bounded: it must not hang logoff or shutdown.
+    /// </summary>
+    public void RevertOnExit()
+    {
+        try
+        {
+            StopSuspensionWatcher(restorePrimary: false);
+
+            if (!HidingStatus.IsSplitActive())
+            {
+                ApplyService.MarkSplitInactive(deliberate: false);
+                return;
+            }
+
+            var log = new Progress<string>(_ => { });
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            ApplyService.Revert(log, cts.Token);
+
+            // Exiting is not a deliberate revert: the configuration should come back next launch.
+            AppSettings? settings = SettingsStore.Load();
+            if (settings is not null)
+            {
+                settings.SplitActiveOnExit = true;
+                SettingsStore.Save(settings);
+            }
+        }
+        catch
+        {
+            // Shutdown must proceed regardless.
+        }
+    }
 
     public ObservableCollection<MonitorInfo> Monitors { get; }
     public ObservableCollection<LayoutDefinition> Layouts { get; }
@@ -197,6 +371,28 @@ public sealed class MainViewModel : ObservableObject
 
     public event EventHandler? MinimizeToTrayRequested;
 
+    /// <summary>
+    /// Crash recovery: a previous session may have died with the physical monitor still removed
+    /// from the desktop. Awaiting (rather than TaskScheduler.FromCurrentSynchronizationContext)
+    /// keeps this working when the view-model is constructed without a synchronisation context.
+    /// </summary>
+    private async Task RecoverThenRefreshAsync()
+    {
+        try
+        {
+            await Task.Run(() =>
+            {
+                SpecializationHashStore.SeedKnownHashes(Monitors.ToList(), _progress);
+                ApplyService.RecoverStaleSpecialization(_progress);
+            }).ConfigureAwait(true);
+            await Hiding.RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            AppendStatus("Display-hiding recovery check failed: " + ex.Message);
+        }
+    }
+
     // ------------------------------------------------------------------ monitor list
 
     /// <summary>Called from the WM_DISPLAYCHANGE hook; keeps the user's edits.</summary>
@@ -285,7 +481,12 @@ public sealed class MainViewModel : ObservableObject
         // a true 16:9 middle segment instead.
         IReadOnlyList<(int Width, int Height)> defaults = layout.ComputeDefaultSegmentSizes(monW, monH);
 
-        foreach (SegmentViewModel old in Segments) old.Changed -= OnSegmentChanged;
+        foreach (SegmentViewModel old in Segments)
+        {
+            old.Changed -= OnSegmentChanged;
+            old.PrimaryRequested -= OnPrimaryRequested;
+            old.LaunchTargetRequested -= OnLaunchTargetRequested;
+        }
         Segments.Clear();
 
         for (int i = 0; i < layout.SegmentCount; i++)
@@ -293,11 +494,119 @@ public sealed class MainViewModel : ObservableObject
             (int w, int h) = reuse ? previous[i] : defaults[i];
             var vm = new SegmentViewModel(i, w, h);
             vm.Changed += OnSegmentChanged;
+            vm.PrimaryRequested += OnPrimaryRequested;
+            vm.LaunchTargetRequested += OnLaunchTargetRequested;
             Segments.Add(vm);
         }
 
+        ApplySegmentRoles();
+
         RebuildEditor();
         RaiseCommandStates();
+    }
+
+    // ------------------------------------------------------------------ segment roles
+
+    private int _primarySegment;
+    private int _launchSegment = -1;
+    private SegmentViewModel? _selectedSegment;
+
+    /// <summary>The zone whose properties are shown in the editor.</summary>
+    public SegmentViewModel? SelectedSegment
+    {
+        get => _selectedSegment;
+        set
+        {
+            if (!SetProperty(ref _selectedSegment, value)) return;
+            foreach (SegmentViewModel s in Segments) s.IsSelected = ReferenceEquals(s, value);
+            OnPropertyChanged(nameof(HasSelectedSegment));
+        }
+    }
+
+    public bool HasSelectedSegment => _selectedSegment is not null;
+
+    /// <summary>Selects a zone by index — used when a zone is clicked on the canvas.</summary>
+    public void SelectSegment(int index)
+    {
+        if (index >= 0 && index < Segments.Count) SelectedSegment = Segments[index];
+    }
+
+    /// <summary>Primary is a radio across zones: granting it to one revokes it from the rest.</summary>
+    private void OnPrimaryRequested(object? sender, EventArgs e)
+    {
+        if (sender is not SegmentViewModel chosen || !chosen.IsPrimary) return;
+
+        _primarySegment = chosen.Index;
+        foreach (SegmentViewModel s in Segments) s.SetPrimaryQuietly(s.Index == _primarySegment);
+        PersistSegmentRoles();
+        AppendStatus($"Zone {_primarySegment + 1} will be the primary display " +
+                     "(taskbar, Start menu, system tray and notification centre).");
+    }
+
+    /// <summary>Launch target is also exclusive, but may be off entirely.</summary>
+    private void OnLaunchTargetRequested(object? sender, EventArgs e)
+    {
+        if (sender is not SegmentViewModel chosen || !chosen.IsLaunchTarget) return;
+
+        _launchSegment = chosen.Index;
+        foreach (SegmentViewModel s in Segments) s.SetLaunchTargetQuietly(s.Index == _launchSegment);
+        PersistSegmentRoles();
+        AppendStatus($"New application windows will open on zone {_launchSegment + 1}.");
+    }
+
+    /// <summary>Turns the "open new windows here" preference off entirely.</summary>
+    public void ClearLaunchSegment()
+    {
+        _launchSegment = -1;
+        foreach (SegmentViewModel s in Segments) s.SetLaunchTargetQuietly(false);
+        PersistSegmentRoles();
+        AppendStatus("New windows will open wherever Windows decides.");
+    }
+
+    public RelayCommand ClearLaunchSegmentCommand => _clearLaunch ??= new RelayCommand(ClearLaunchSegment);
+    private RelayCommand? _clearLaunch;
+
+    /// <summary>Pushes the persisted roles onto freshly rebuilt segment view-models.</summary>
+    private void ApplySegmentRoles()
+    {
+        if (Segments.Count == 0) return;
+
+        AppSettings? settings = SettingsStore.Load();
+        if (settings is not null)
+        {
+            _primarySegment = settings.PrimarySegment;
+            _launchSegment = settings.LaunchSegment;
+        }
+        if (_primarySegment < 0 || _primarySegment >= Segments.Count) _primarySegment = 0;
+        if (_launchSegment >= Segments.Count) _launchSegment = -1;
+
+        for (int i = 0; i < Segments.Count; i++)
+        {
+            Segments[i].SetPrimaryQuietly(i == _primarySegment);
+            Segments[i].SetLaunchTargetQuietly(i == _launchSegment);
+
+            bool showTaskbar = settings is not null && i < settings.Segments.Count
+                ? settings.Segments[i].ShowTaskbar
+                : true;
+            Segments[i].SetShowTaskbarQuietly(showTaskbar);
+        }
+
+        SelectedSegment ??= Segments[0];
+    }
+
+    private void PersistSegmentRoles()
+    {
+        try
+        {
+            AppSettings settings = SettingsStore.Load() ?? new AppSettings();
+            settings.PrimarySegment = _primarySegment;
+            settings.LaunchSegment = _launchSegment;
+            SettingsStore.Save(settings);
+        }
+        catch (Exception ex)
+        {
+            AppendStatus("Could not save the zone roles: " + ex.Message);
+        }
     }
 
     private void OnSegmentChanged(object? sender, EventArgs e)
@@ -348,6 +657,9 @@ public sealed class MainViewModel : ObservableObject
             z.H = rects[i].H;
             z.SizeText = $"{sizes[i].Width}x{sizes[i].Height}";
             z.AspectNote = ZoneVisual.DescribeAspect(sizes[i].Width, sizes[i].Height);
+            z.IsSelected = i < Segments.Count && Segments[i].IsSelected;
+            z.IsPrimary = i == _primarySegment;
+            z.IsLaunchTarget = i == _launchSegment;
         }
 
         RebuildSplitters(layout, rects);
@@ -554,7 +866,10 @@ public sealed class MainViewModel : ObservableObject
 
     // ------------------------------------------------------------------ apply / revert
 
-    public async Task ApplyAsync()
+    /// <summary>User-initiated apply — always confirmed with the keep-or-revert countdown.</summary>
+    public Task ApplyAsync() => ApplyAsync(promptToConfirm: true);
+
+    public async Task ApplyAsync(bool promptToConfirm)
     {
         if (!CanApply) return;
 
@@ -567,6 +882,13 @@ public sealed class MainViewModel : ObservableObject
             Physical = physical,
             Layout = layout,
             Resolutions = resolutions,
+            HidePhysicalDisplay = Hiding.IntentOn,
+            PrimarySegment = _primarySegment,
+            ShowTaskbar = Segments.Select(s => s.EffectiveShowTaskbar).ToList(),
+            LaunchSegment = _launchSegment,
+            SpecializationUi = Hiding.CreateSpecializationUi(() => Monitors.ToList()),
+            PromptToConfirm = promptToConfirm,
+            Confirmer = _applyConfirmer,
         };
 
         IsBusy = true;
@@ -575,7 +897,11 @@ public sealed class MainViewModel : ObservableObject
         {
             ApplyResult result = await Task.Run(() => ApplyService.Apply(request, _progress, CancellationToken.None))
                                            .ConfigureAwait(true);
-            AppendStatus($"Done. {result.VirtualMonitors.Count} virtual monitor(s) active.");
+            AppendStatus(result.RolledBack
+                ? $"Change reverted — restored {result.RollbackDescription}."
+                : $"Done. {result.VirtualMonitors.Count} virtual monitor(s) active.");
+
+            if (!result.RolledBack) StartSuspensionWatcher();
         }
         catch (ApplyException ex)
         {
@@ -615,6 +941,11 @@ public sealed class MainViewModel : ObservableObject
     {
         IsBusy = true;
         AppendStatus("--- Reverting ---");
+
+        // Drop any pending suspend state first: Revert restores primary itself, and a watcher
+        // still reacting to events would fight it.
+        StopSuspensionWatcher(restorePrimary: false);
+
         try
         {
             await Task.Run(() => ApplyService.Revert(_progress, CancellationToken.None)).ConfigureAwait(true);
@@ -763,3 +1094,4 @@ public sealed class MainViewModel : ObservableObject
         return true;
     }
 }
+

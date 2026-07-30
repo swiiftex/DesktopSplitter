@@ -28,6 +28,14 @@ struct PresenterInit {
     IDXGIFactory5*       factory = nullptr;   // window path only
     IDXGIAdapter1*       adapter = nullptr;
     std::mutex*          ctxMutex = nullptr;  // guards 'ctx'
+
+    // Diagnostic mode override for the specialized path. 5120x1440@240 is a
+    // DSC-class mode; being able to ask for the smallest advertised mode tells
+    // us whether a failure is bandwidth-related or API-usage-related.
+    bool     lowestMode = false;         // --lowest-mode
+    uint32_t modeWidth = 0;              // --mode WxH@Hz (0 = no override)
+    uint32_t modeHeight = 0;
+    double   modeHz = 0.0;
 };
 
 class IPresenter {
@@ -53,6 +61,12 @@ public:
     // True when presentation blocks until the display is ready, so the render
     // loop must not additionally pace itself.
     virtual bool SelfPaced() const = 0;
+
+    // True once the presenter has failed unrecoverably *after* it was already
+    // presenting - e.g. the specialized display stopped accepting scanouts.
+    // The render loop stops and the process exits with a distinct code so the
+    // control app can tell "the hidden display went dark" from a clean exit.
+    virtual bool Failed() const { return false; }
 };
 
 } // namespace ds

@@ -160,6 +160,49 @@ inline void ExtractCtaDtds(const Bytes& e, const CtaBlockInfo& cta,
 // Microsoft VSDB
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Block map (extension tag 0xF0)
+// ---------------------------------------------------------------------------
+//
+// EDID 1.3/1.4: when more than one extension block is present, block 1 should
+// be a Block Map listing the tags of blocks 2..127 (map[i] describes block
+// i+1). Appending a block without updating the map leaves the map lying about
+// the EDID's contents, and a strict parser will never look at the new block.
+//
+// Not every EDID follows the rule - the Philips 49M2C8900's CRU override has
+// three extensions and no block map at all - so this is best-effort: update a
+// map if one is there, never invent one.
+
+constexpr uint8_t kExtTagBlockMap = 0xF0;
+
+inline bool HasBlockMap(const Bytes& e) {
+    return BlockCount(e) > 1 && e[kBlockSize] == kExtTagBlockMap;
+}
+
+inline void RefreshBlockMap(Bytes& e) {
+    if (!HasBlockMap(e)) return;
+    uint8_t* map = e.data() + kBlockSize;
+    const size_t blocks = BlockCount(e);
+    for (size_t i = 1; i <= 126; ++i) {
+        const size_t described = i + 1;             // map[i] describes block i+1
+        map[i] = (described < blocks) ? e[described * kBlockSize] : 0x00;
+    }
+    FixBlockChecksum(map);
+}
+
+// True when the map agrees with the blocks actually present.
+inline bool BlockMapIsConsistent(const Bytes& e) {
+    if (!HasBlockMap(e)) return true;              // vacuously fine
+    const uint8_t* map = e.data() + kBlockSize;
+    const size_t blocks = BlockCount(e);
+    for (size_t i = 1; i <= 126; ++i) {
+        const size_t described = i + 1;
+        const uint8_t want = (described < blocks) ? e[described * kBlockSize] : 0x00;
+        if (map[i] != want) return false;
+    }
+    return true;
+}
+
 struct VsdbLocation {
     bool   found = false;
     size_t offset = 0;      // offset of the data block header byte
@@ -326,6 +369,11 @@ inline PatchResult AddMicrosoftVsdb(const Bytes& input, const VsdbOptions& opts)
     r.output[126] = static_cast<uint8_t>(r.output[126] + 1);
     FixBlockChecksum(r.output.data());
 
+    // If this EDID carries a block map, it now describes one block fewer than
+    // exists. Without this the appended CTA block is invisible to any parser
+    // that trusts the map.
+    RefreshBlockMap(r.output);
+
     r.ok = true;
     r.strategy = PatchStrategy::AppendNewCtaBlock;
     return r;
@@ -419,15 +467,29 @@ inline RoundTripReport VerifyRoundTrip(const Bytes& before, const Bytes& after,
         if (before[i] != after[i]) ++rep.differingBytes;
     }
 
+    if (!BlockMapIsConsistent(after)) {
+        rep.error = "the block map does not describe the blocks actually present";
+        return rep;
+    }
+
     if (strategy == PatchStrategy::AppendNewCtaBlock) {
         if (after.size() != before.size() + kBlockSize) {
             rep.error = "append strategy did not grow the EDID by exactly one block";
             return rep;
         }
-        // Only byte 126 (extension count) and 127 (checksum) may differ.
-        if (rep.differingBytes != 2 || before[126] + 1 != after[126]) {
-            rep.error = "append strategy touched bytes outside the base block "
-                        "extension count and checksum";
+        if (before[126] + 1 != after[126]) {
+            rep.error = "append strategy did not increment the extension count";
+            return rep;
+        }
+        // Only byte 126 (extension count) and 127 (checksum) may differ - plus
+        // the block map block, when one is present and had to be refreshed.
+        const bool mapped = HasBlockMap(after);
+        for (size_t i = 0; i < common; ++i) {
+            if (before[i] == after[i]) continue;
+            if (i == 126 || i == 127) continue;
+            if (mapped && i >= kBlockSize && i < 2 * kBlockSize) continue;
+            rep.error = "append strategy modified a byte outside the extension "
+                        "count, the base checksum and the block map";
             return rep;
         }
     } else if (strategy == PatchStrategy::InsertIntoExistingCta) {

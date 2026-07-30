@@ -36,6 +36,40 @@ public sealed class ZoneVisual : ObservableObject
 
     public bool HasAspectNote => !string.IsNullOrEmpty(_aspectNote);
 
+    private bool _isSelected;
+    private bool _isPrimary;
+    private bool _isLaunchTarget;
+
+    /// <summary>Drawn with an accent border while this zone's properties are being edited.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+
+    public bool IsPrimary
+    {
+        get => _isPrimary;
+        set { if (SetProperty(ref _isPrimary, value)) OnPropertyChanged(nameof(RoleBadge)); }
+    }
+
+    public bool IsLaunchTarget
+    {
+        get => _isLaunchTarget;
+        set { if (SetProperty(ref _isLaunchTarget, value)) OnPropertyChanged(nameof(RoleBadge)); }
+    }
+
+    /// <summary>Short marker shown on the zone, e.g. "PRIMARY" or "NEW WINDOWS".</summary>
+    public string RoleBadge => (IsPrimary, IsLaunchTarget) switch
+    {
+        (true, true) => "PRIMARY · NEW WINDOWS",
+        (true, false) => "PRIMARY",
+        (false, true) => "NEW WINDOWS",
+        _ => string.Empty,
+    };
+
+    public bool HasRoleBadge => !string.IsNullOrEmpty(RoleBadge);
+
     /// <summary>Names the aspect ratio when the zone is within 1% of a well-known one.</summary>
     public static string DescribeAspect(int width, int height)
     {
