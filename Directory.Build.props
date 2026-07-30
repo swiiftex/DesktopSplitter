@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Root Directory.Build.props.
+
+  MSBuild imports this automatically for EVERY project under the repo root,
+  including the C++ .vcxproj files. The C++ projects must not be affected by
+  any of it, so every property group and import below is guarded on
+  '$(MSBuildProjectExtension)' == '.csproj'. The C++ side gets its version from
+  build\generated\Version.h instead.
+
+  build\generated\Version.props is written by build.ps1 from the root VERSION
+  file before anything compiles. When it is absent (someone opened the solution
+  in Visual Studio without running build.ps1 first) the fallback below keeps the
+  build working, just with a 0.0.0 stamp.
+-->
+<Project>
+
+  <Import Project="$(MSBuildThisFileDirectory)build\generated\Version.props"
+          Condition="'$(MSBuildProjectExtension)' == '.csproj' And Exists('$(MSBuildThisFileDirectory)build\generated\Version.props')" />
+
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <!-- Fallback when build.ps1 has not generated Version.props yet. -->
+    <DeskSplitVersion Condition="'$(DeskSplitVersion)' == ''">0.0.0</DeskSplitVersion>
+
+    <Version>$(DeskSplitVersion)</Version>
+    <VersionPrefix>$(DeskSplitVersion)</VersionPrefix>
+    <!-- AssemblyVersion/FileVersion are 4-part; the build number stays 0. -->
+    <AssemblyVersion>$(DeskSplitVersion).0</AssemblyVersion>
+    <FileVersion>$(DeskSplitVersion).0</FileVersion>
+    <InformationalVersion>$(DeskSplitVersion)</InformationalVersion>
+  </PropertyGroup>
+
+</Project>

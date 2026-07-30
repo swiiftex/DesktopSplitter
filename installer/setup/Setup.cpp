@@ -216,6 +216,8 @@ namespace
         Out(L"DesktopSplitter setup - report\n");
         Out(L"==============================\n\n");
 
+        Out(L"Installer      : DesktopSplitter %s\n", kProductVersion);
+
         EditionInfo Edition = {};
         GetEditionInfo(&Edition);
         Out(L"Windows        : %s (EditionID=%s) %s build %u\n",

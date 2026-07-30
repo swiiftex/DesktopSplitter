@@ -161,6 +161,12 @@ internal static class NativeMethods
     internal const uint DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2;
     internal const uint DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME = 4;
 
+    // Monitor specialization — the SUPPORTED "remove display from desktop" mechanism that
+    // Settings > Advanced display uses. Both constants ship in wingdi.h (verified in SDK
+    // 10.0.28000.0) but are omitted from the documented DISPLAYCONFIG_DEVICE_INFO_TYPE table.
+    internal const uint DISPLAYCONFIG_DEVICE_INFO_GET_MONITOR_SPECIALIZATION = 12;
+    internal const uint DISPLAYCONFIG_DEVICE_INFO_SET_MONITOR_SPECIALIZATION = 13;
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     internal struct DISPLAYCONFIG_SOURCE_DEVICE_NAME
     {
@@ -187,6 +193,39 @@ internal static class NativeMethods
         public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string adapterDevicePath;
     }
+
+    /// <summary>
+    /// DISPLAYCONFIG_GET_MONITOR_SPECIALIZATION (wingdi.h). header (20) + value (4) = 24 bytes.
+    /// Bit 0 = enabled now, bit 1 = available for THIS monitor, bit 2 = available for THIS system.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct DISPLAYCONFIG_GET_MONITOR_SPECIALIZATION
+    {
+        public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+        public uint value;
+    }
+
+    /// <summary>
+    /// DISPLAYCONFIG_SET_MONITOR_SPECIALIZATION (wingdi.h).
+    /// header (20) + value (4) + specializationType GUID (16) + specializationSubType GUID (16)
+    /// + specializationApplicationName WCHAR[128] (256) = 312 bytes.
+    /// Only bit 0 of <c>value</c> is defined (isSpecializationEnabled).
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct DISPLAYCONFIG_SET_MONITOR_SPECIALIZATION
+    {
+        public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+        public uint value;
+        public Guid specializationType;
+        public Guid specializationSubType;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string specializationApplicationName;
+    }
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    internal static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_GET_MONITOR_SPECIALIZATION requestPacket);
+
+    [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
+    internal static extern int DisplayConfigSetDeviceInfo(ref DISPLAYCONFIG_SET_MONITOR_SPECIALIZATION setPacket);
 
     [DllImport("user32.dll", ExactSpelling = true)]
     internal static extern int GetDisplayConfigBufferSizes(

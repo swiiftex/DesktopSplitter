@@ -17,12 +17,12 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Text="Display changes applied. Keep them?"
+            <TextBlock x:Name="HeadingText" Grid.Row="0" Text="Keep these display settings?"
                        FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
 
-            <TextBlock Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap"
+            <TextBlock x:Name="DetailText" Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap"
                        Foreground="{StaticResource MutedBrush}" FontSize="13"
-                       Text="If your display looks wrong, or you cannot see this clearly, do nothing — the change undoes itself when the countdown reaches zero."/>
+                       Text="If anything looks wrong, or you cannot see this clearly, do nothing — the change undoes itself when the countdown reaches zero."/>
 
             <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock x:Name="CountdownText" Text="10"

@@ -41,6 +41,13 @@ public partial class MainWindow : Window, IHidingUi
         _viewModel.StatusAppended += (_, _) => Dispatcher.BeginInvoke(new Action(() => StatusBox.ScrollToEnd()));
 
         _viewModel.Hiding.AttachUi(this);
+        _viewModel.AttachConfirmer(new ApplyConfirmer(this, _viewModel.AppendStatus));
+        _viewModel.LoadPreferences();
+
+        Title = string.IsNullOrEmpty(MainViewModel.VersionText)
+            ? "DesktopSplitter"
+            : $"DesktopSplitter {MainViewModel.VersionText}";
+        VersionLabel.Text = MainViewModel.VersionText;
     }
 
     // ------------------------------------------------------------------ IHidingUi
@@ -69,6 +76,28 @@ public partial class MainWindow : Window, IHidingUi
         return new CountdownHandle(window);
     }
 
+    public ICountdownHandle ShowApplyCountdown(string summary, int seconds, Action onKeep, Action onRevert)
+    {
+        var window = new CountdownWindow(
+            seconds,
+            heading: "Keep these display settings?",
+            detail: $"Applied: {summary}." + Environment.NewLine +
+                    "If anything looks wrong, or you cannot see this clearly, do nothing — " +
+                    "the previous settings come back when the countdown reaches zero.");
+
+        window.Answered += keep =>
+        {
+            if (keep) onKeep(); else onRevert();
+        };
+
+        window.Show();
+        window.PlaceOnPrimary();
+        window.Activate();
+        window.Focus();
+
+        return new CountdownHandle(window);
+    }
+
     private sealed class CountdownHandle : ICountdownHandle
     {
         private readonly CountdownWindow _window;
@@ -76,6 +105,31 @@ public partial class MainWindow : Window, IHidingUi
         public CountdownHandle(CountdownWindow window) => _window = window;
 
         public void CloseFromHelper() => _window.CloseFromHelper();
+    }
+
+    public IGuidedHandle ShowGuidedSettings(
+        MonitorInfo target, bool wantEnabled, string reason, MonitorInfo? placeOn, Action<bool> onFinished)
+    {
+        var window = new ManualSpecializationWindow(target, wantEnabled, reason);
+        window.Finished += onFinished;
+
+        window.Show();
+        if (placeOn is not null) window.PlaceOn(placeOn);
+        window.Activate();
+
+        // Take the user straight there — the button is for a second look.
+        ManualSpecializationWindow.OpenDisplaySettings();
+
+        return new GuidedHandle(window);
+    }
+
+    private sealed class GuidedHandle : IGuidedHandle
+    {
+        private readonly ManualSpecializationWindow _window;
+
+        public GuidedHandle(ManualSpecializationWindow window) => _window = window;
+
+        public void CloseFromCaller() => _window.CloseFromCaller();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -132,6 +186,14 @@ public partial class MainWindow : Window, IHidingUi
     private void Splitter_LostMouseCapture(object sender, MouseEventArgs e)
         => _viewModel.EndSplitterDrag();
 
+    /// <summary>Clicking a zone on the canvas selects it and shows its properties.</summary>
+    private void Zone_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not int index) return;
+        _viewModel.SelectSegment(index);
+        e.Handled = true;
+    }
+
     // ------------------------------------------------------------------ window lifetime
 
     private void HideToTray()
@@ -143,13 +205,18 @@ public partial class MainWindow : Window, IHidingUi
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        // Closing the window keeps the app alive in the tray; Exit is explicit.
-        if (Application.Current is App { IsExiting: false } && _tray is not null)
+        // Closing the window normally keeps the app alive in the tray; Exit is explicit. When the
+        // user has turned that off, closing the window really exits — and App's teardown reverts.
+        bool minimiseToTray = SettingsStore.Load()?.MinimizeToTrayOnClose ?? true;
+
+        if (Application.Current is App { IsExiting: false } && _tray is not null && minimiseToTray)
         {
             e.Cancel = true;
             HideToTray();
             return;
         }
+
         base.OnClosing(e);
+        if (Application.Current is App app && !app.IsExiting) app.ExitApplication();
     }
 }

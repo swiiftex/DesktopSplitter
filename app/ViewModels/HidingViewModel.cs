@@ -1,15 +1,22 @@
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopSplitter.Interop;
 using DesktopSplitter.Models;
 using DesktopSplitter.Services;
 
 namespace DesktopSplitter.ViewModels;
 
-/// <summary>A live countdown dialog the view-model can dismiss when the helper finishes.</summary>
+/// <summary>A live countdown dialog the caller can dismiss early.</summary>
 public interface ICountdownHandle
 {
     void CloseFromHelper();
+}
+
+/// <summary>A live guided-Settings dialog the caller can dismiss early.</summary>
+public interface IGuidedHandle
+{
+    void CloseFromCaller();
 }
 
 /// <summary>The dialogs the hiding flows need. Implemented by the main window.</summary>
@@ -22,111 +29,119 @@ public interface IHidingUi
 
     /// <summary>Shows the keep-or-revert countdown on <paramref name="placeOn"/>.</summary>
     ICountdownHandle ShowCountdown(int seconds, MonitorInfo? placeOn, Action onKeep, Action onRevert);
+
+    /// <summary>
+    /// Shows the generic "Keep these display settings?" countdown, centred on the primary display.
+    /// </summary>
+    ICountdownHandle ShowApplyCountdown(string summary, int seconds, Action onKeep, Action onRevert);
+
+    /// <summary>
+    /// Shows the guided "Remove display from desktop" instructions on <paramref name="placeOn"/>.
+    /// The dialog polls the display state itself and reports through <paramref name="onFinished"/>
+    /// (true when the display reached <paramref name="wantEnabled"/>, false if cancelled).
+    /// </summary>
+    IGuidedHandle ShowGuidedSettings(
+        MonitorInfo target, bool wantEnabled, string reason, MonitorInfo? placeOn, Action<bool> onFinished);
 }
 
 public sealed class StatusRowViewModel : ObservableObject
 {
     private CheckState _state;
     private string _detail = string.Empty;
+    private string _label;
 
-    public StatusRowViewModel(string label) => Label = label;
+    public StatusRowViewModel(string label) => _label = label;
 
-    public string Label { get; }
+    public string Label
+    {
+        get => _label;
+        private set => SetProperty(ref _label, value);
+    }
 
     public CheckState State
     {
         get => _state;
-        set { if (SetProperty(ref _state, value)) OnPropertyChanged(nameof(Glyph)); }
+        private set { if (SetProperty(ref _state, value)) OnPropertyChanged(nameof(Glyph)); }
     }
 
     public string Detail
     {
         get => _detail;
-        set => SetProperty(ref _detail, value);
+        private set => SetProperty(ref _detail, value);
     }
 
     public string Glyph => State switch
     {
-        CheckState.Ok => "●",     // filled dot
-        CheckState.No => "○",     // hollow dot
-        _ => "—",                 // em dash
+        CheckState.Ok => "●",
+        CheckState.No => "○",
+        CheckState.Info => "·",
+        _ => "—",
     };
 
     public void Update(StatusRow row)
     {
+        Label = row.Label;
         State = row.State;
         Detail = row.Detail;
     }
 }
 
 /// <summary>
-/// The "Display hiding (experimental)" panel: status probes plus the guarded enable/disable
-/// flows that wrap edidoverride.exe.
+/// The "Display hiding (experimental)" panel.
+///
+/// Hiding uses DisplayConfig monitor specialization — the supported mechanism behind
+/// Settings &gt; Advanced display &gt; "Remove display from desktop". Enable/Disable here only
+/// record the INTENT; the display is actually hidden during Apply, once the split is up and the
+/// physical monitor is no longer primary (Windows will not specialize a primary display).
 /// </summary>
 public sealed class HidingViewModel : ObservableObject
 {
-    /// <summary>Matches the helper's own default; it remains the authority on the real timer.</summary>
-    public const int TimeoutSeconds = 10;
-
     private readonly Func<MonitorInfo?> _selectedMonitor;
-    private readonly Func<IReadOnlyList<MonitorInfo>> _allMonitors;
     private readonly Action<string> _log;
-    private readonly IProgress<string> _progress;
-    private readonly SynchronizationContext _uiContext;
 
     private IHidingUi? _ui;
     private bool _busy;
     private string _disabledReason = string.Empty;
     private HidingSnapshot? _snapshot;
 
-    public HidingViewModel(
-        Func<MonitorInfo?> selectedMonitor,
-        Func<IReadOnlyList<MonitorInfo>> allMonitors,
-        Action<string> log)
+    public HidingViewModel(Func<MonitorInfo?> selectedMonitor, Action<string> log)
     {
         _selectedMonitor = selectedMonitor;
-        _allMonitors = allMonitors;
         _log = log;
-        _progress = new Progress<string>(log);
-        _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
         Rows = new ObservableCollection<StatusRowViewModel>
         {
-            new("Windows edition"),
-            new("Monitor is hideable"),
-            new("DesktopSplitter override"),
-            new("HidePhysicalDisplay flag"),
+            new("Windows can hide displays"),
+            new("This monitor can be hidden"),
+            new("Hidden right now"),
+            new("Hide during Apply"),
         };
 
         RefreshCommand = new RelayCommand(async () => await RefreshAsync().ConfigureAwait(false), () => !IsBusy);
-        EnableCommand = new RelayCommand(async () => await EnableAsync(dryRun: false).ConfigureAwait(false),
+        EnableCommand = new RelayCommand(async () => await SetIntentAsync(true).ConfigureAwait(false),
                                          () => CanEnable);
-        DisableCommand = new RelayCommand(async () => await DisableAsync().ConfigureAwait(false), () => CanDisable);
-        TestRunCommand = new RelayCommand(async () => await EnableAsync(dryRun: true).ConfigureAwait(false),
-                                          () => CanTestRun);
+        DisableCommand = new RelayCommand(async () => await SetIntentAsync(false).ConfigureAwait(false),
+                                          () => CanDisable);
     }
 
-    /// <summary>Supplied by the view once it is constructed.</summary>
     public void AttachUi(IHidingUi ui) => _ui = ui;
+
+    /// <summary>The main window's hiding dialogs, wrapped for <see cref="ApplyService"/>.</summary>
+    public ISpecializationUi CreateSpecializationUi(Func<IReadOnlyList<MonitorInfo>> allMonitors)
+        => new SpecializationUi(this, allMonitors);
 
     public ObservableCollection<StatusRowViewModel> Rows { get; }
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand EnableCommand { get; }
     public RelayCommand DisableCommand { get; }
-    public RelayCommand TestRunCommand { get; }
 
     public bool IsBusy
     {
         get => _busy;
-        private set
-        {
-            if (!SetProperty(ref _busy, value)) return;
-            RaiseStates();
-        }
+        private set { if (SetProperty(ref _busy, value)) RaiseStates(); }
     }
 
-    /// <summary>Why the action buttons are greyed out, or "" when they are usable.</summary>
     public string DisabledReason
     {
         get => _disabledReason;
@@ -139,39 +154,37 @@ public sealed class HidingViewModel : ObservableObject
 
     public bool HasDisabledReason => !string.IsNullOrEmpty(_disabledReason);
 
-    public bool CanEnable => !IsBusy && _snapshot is { OsSupported: true, SplitActive: false, HelperFound: true }
-                             && !_snapshot.OverrideIsOurs && _selectedMonitor() is not null;
+    /// <summary>Whether Apply should try to hide the physical monitor.</summary>
+    public bool IntentOn => _snapshot?.IntentOn ?? false;
 
-    public bool CanDisable => !IsBusy && _snapshot is { HelperFound: true, SplitActive: false }
-                              && (_snapshot.OverrideIsOurs || _snapshot.FlagOn) && _selectedMonitor() is not null;
+    public bool CanEnable => !IsBusy && _snapshot is { Available: true, IntentOn: false, SplitActive: false }
+                             && _selectedMonitor() is not null;
 
-    /// <summary>The dry run only needs the helper — it changes nothing and needs no elevation.</summary>
-    public bool CanTestRun => !IsBusy && _snapshot is { HelperFound: true } && _selectedMonitor() is not null;
+    public bool CanDisable => !IsBusy && _snapshot is { IntentOn: true, SplitActive: false };
 
     // ------------------------------------------------------------------ status
 
     public async Task RefreshAsync()
     {
         MonitorInfo? selected = _selectedMonitor();
-        HidingSnapshot snapshot = await Task.Run(() => HidingStatus.QueryAsync(selected)).ConfigureAwait(true);
+        HidingSnapshot snapshot = await Task.Run(() => HidingStatus.Query(selected)).ConfigureAwait(true);
 
         _snapshot = snapshot;
         IReadOnlyList<StatusRow> rows = snapshot.Rows;
         for (int i = 0; i < Rows.Count && i < rows.Count; i++) Rows[i].Update(rows[i]);
 
         DisabledReason = ComputeDisabledReason(snapshot, selected);
+        OnPropertyChanged(nameof(IntentOn));
         RaiseStates();
     }
 
     private static string ComputeDisabledReason(HidingSnapshot snapshot, MonitorInfo? selected)
     {
         if (selected is null) return "Select a physical monitor first.";
-        if (!snapshot.OsSupported)
-            return "This Windows edition cannot drive a specialized display, so hiding would have no effect.";
-        if (!snapshot.HelperFound)
-            return $"edidoverride.exe not found — expected at {snapshot.HelperPath}.";
         if (snapshot.SplitActive)
-            return "A split is active. Press Revert first — the monitor cannot be re-enumerated while it is in use.";
+            return "A split is active. Press Revert first — display hiding is turned on and off during Apply.";
+        if (!snapshot.Available && !snapshot.IntentOn)
+            return "Windows reports this monitor cannot be removed from the desktop, so hiding would do nothing.";
         return string.Empty;
     }
 
@@ -179,42 +192,33 @@ public sealed class HidingViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanEnable));
         OnPropertyChanged(nameof(CanDisable));
-        OnPropertyChanged(nameof(CanTestRun));
         RefreshCommand.RaiseCanExecuteChanged();
         EnableCommand.RaiseCanExecuteChanged();
         DisableCommand.RaiseCanExecuteChanged();
-        TestRunCommand.RaiseCanExecuteChanged();
     }
 
-    // ------------------------------------------------------------------ enable / test run
+    // ------------------------------------------------------------------ enable / disable intent
 
-    private async Task EnableAsync(bool dryRun)
+    private async Task SetIntentAsync(bool enable)
     {
-        MonitorInfo? target = _selectedMonitor();
         IHidingUi? ui = _ui;
-        if (target is null || ui is null) return;
-        if (!dryRun && !CanEnable) return;
-        if (dryRun && !CanTestRun) return;
+        MonitorInfo? target = _selectedMonitor();
+        if (ui is null) return;
+        if (enable && !CanEnable) return;
+        if (!enable && !CanDisable) return;
 
-        string title = dryRun ? "Test run (no changes)" : "Enable display hiding";
-        if (!ui.Confirm(title, BuildExplanation(target, dryRun))) return;
+        string title = enable ? "Enable display hiding" : "Disable display hiding";
+        if (!ui.Confirm(title, BuildExplanation(target, enable))) return;
 
         IsBusy = true;
-        _log($"--- {(dryRun ? "Display hiding TEST RUN" : "Enabling display hiding")} on {target.DeviceName} ---");
-
         try
         {
-            GuardResult result = await RunGuardedAsync(target, dryRun).ConfigureAwait(true);
+            HidingStatus.IntentWriteResult result =
+                await Task.Run(() => HidingStatus.WriteIntent(enable)).ConfigureAwait(true);
+
+            _log(result.Message);
             await RefreshAsync().ConfigureAwait(true);
-
-            ui.ShowOutcome(title, DescribeOutcome(result, dryRun), result.Succeeded);
-
-            if (result.Succeeded && !dryRun)
-            {
-                ui.ShowOutcome("Display hiding is armed",
-                    "Hiding is armed. Apply a split now to use it — the compositor picks the specialized " +
-                    "presenter automatically from the HidePhysicalDisplay flag.", true);
-            }
+            ui.ShowOutcome(title, result.Message, result.Success);
         }
         finally
         {
@@ -222,113 +226,151 @@ public sealed class HidingViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Runs the guarded sequence and drives the countdown. The countdown is shown when the
-    /// helper reports Armed, and torn down as soon as the helper exits — however it exits.
-    /// </summary>
-    private async Task<GuardResult> RunGuardedAsync(MonitorInfo target, bool dryRun)
+    private static string BuildExplanation(MonitorInfo? target, bool enable)
     {
-        var session = new EdidGuardSession();
-        ICountdownHandle? countdown = null;
-        IHidingUi ui = _ui!;
+        string name = target?.DisplayLabel ?? "the selected monitor";
 
-        MonitorInfo? placeOn = CountdownPlacement.ChooseMonitor(_allMonitors(), target.DeviceName);
-        if (placeOn is not null && !string.Equals(placeOn.DeviceName, target.DeviceName, StringComparison.OrdinalIgnoreCase))
-            _log($"Countdown will appear on {placeOn.DisplayLabel} ({placeOn.DeviceName}), away from the target.");
-        else
-            _log("Only one display available — the countdown will appear on it.");
-
-        session.Armed += seconds => _uiContext.Post(_ =>
+        if (!enable)
         {
-            countdown = ui.ShowCountdown(
-                seconds, placeOn,
-                onKeep: () => session.RequestKeep(),
-                onRevert: () => session.RequestRevert());
-        }, null);
-
-        try
-        {
-            return await session
-                .ApplyAsync(target.DeviceName, dryRun, TimeoutSeconds, _progress, CancellationToken.None)
-                .ConfigureAwait(true);
+            return
+                "Apply will stop removing the physical monitor from the desktop." +
+                Environment.NewLine + Environment.NewLine +
+                "If a split is running right now, press Revert to put the monitor back.";
         }
-        finally
-        {
-            _uiContext.Post(_ => countdown?.CloseFromHelper(), null);
-        }
-    }
-
-    // ------------------------------------------------------------------ disable
-
-    private async Task DisableAsync()
-    {
-        MonitorInfo? target = _selectedMonitor();
-        IHidingUi? ui = _ui;
-        if (target is null || ui is null || !CanDisable) return;
-
-        string message =
-            $"This removes the DesktopSplitter EDID override from {target.DisplayLabel} ({target.DeviceName}) " +
-            "and clears the HidePhysicalDisplay flag, returning it to an ordinary desktop monitor." +
-            Environment.NewLine + Environment.NewLine +
-            "The monitor will be restarted, so the screen may blink." + Environment.NewLine + Environment.NewLine +
-            "Windows will ask for administrator rights.";
-
-        if (!ui.Confirm("Disable display hiding", message)) return;
-
-        IsBusy = true;
-        _log($"--- Disabling display hiding on {target.DeviceName} ---");
-        try
-        {
-            var session = new EdidGuardSession();
-            GuardResult result = await session
-                .RevertAsync(target.DeviceName, dryRun: false, _progress, CancellationToken.None)
-                .ConfigureAwait(true);
-
-            await RefreshAsync().ConfigureAwait(true);
-            ui.ShowOutcome("Disable display hiding", result.Message, result.Succeeded);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    // ------------------------------------------------------------------ text
-
-    private static string BuildExplanation(MonitorInfo target, bool dryRun)
-    {
-        string what = dryRun
-            ? "This is a REHEARSAL. edidoverride.exe walks the entire sequence — including this " +
-              "countdown and every exit code — but changes absolutely nothing, and does not need " +
-              "administrator rights."
-            : "DesktopSplitter will patch the EDID that Windows reads for this monitor so Windows " +
-              "treats it as a specialized display and removes it from the desktop.";
 
         return
-            $"Target: {target.DisplayLabel} ({target.DeviceName}){Environment.NewLine}{Environment.NewLine}" +
-            what + Environment.NewLine + Environment.NewLine +
-            "What happens next:" + Environment.NewLine +
-            "  1. The EDID override is written and the monitor is restarted." + Environment.NewLine +
-            "  2. The screen may blink or go briefly dark." + Environment.NewLine +
-            $"  3. A countdown appears and you have {TimeoutSeconds} seconds to confirm." +
+            $"Target: {name} ({target?.DeviceName}){Environment.NewLine}{Environment.NewLine}" +
+            "This records an intent — nothing changes yet. The next time you press Apply, " +
+            "DesktopSplitter will:" + Environment.NewLine +
+            "  1. Create the virtual monitors and make segment 1 the primary display." + Environment.NewLine +
+            "  2. Remove the physical monitor from the desktop — the same thing as Settings > " +
+            "Advanced display > \"Remove display from desktop\"." + Environment.NewLine +
+            "  3. Start the compositor and wait for it to confirm it is drawing to the hidden display." +
+            Environment.NewLine +
+            $"  4. Ask you to confirm, with a {ApplyService.SpecializationConfirmSeconds}-second countdown." +
             Environment.NewLine + Environment.NewLine +
             "If anything looks wrong — or you cannot see the countdown at all — DO NOTHING. " +
-            $"The change reverts itself automatically after {TimeoutSeconds} seconds." +
+            $"The monitor comes back automatically after {ApplyService.SpecializationConfirmSeconds} seconds " +
+            "and the compositor restarts in its normal windowed mode." +
             Environment.NewLine + Environment.NewLine +
-            (dryRun ? "Nothing will be modified." : "Windows will ask for administrator rights.");
+            "Revert always puts the monitor back on the desktop.";
     }
 
-    private static string DescribeOutcome(GuardResult result, bool dryRun) => result.Outcome switch
+    // ------------------------------------------------------------------ keep/revert countdown
+
+    /// <summary>
+    /// Bridges <see cref="ApplyService"/> (background thread) to the countdown window (UI thread).
+    /// Blocks the apply until the user answers or the countdown lapses; a lapse means REVERT, so
+    /// a user who cannot see the dialog always ends up back where they started.
+    /// </summary>
+    private sealed class SpecializationUi : ISpecializationUi
     {
-        GuardOutcome.Kept => dryRun
-            ? "Rehearsal complete: the Keep path worked end to end. Nothing was changed."
-            : result.Message,
-        GuardOutcome.RevertedByUser => dryRun
-            ? "Rehearsal complete: the Revert path worked end to end. Nothing was changed."
-            : result.Message,
-        GuardOutcome.AutoReverted => dryRun
-            ? "Rehearsal complete: the timeout path worked end to end. Nothing was changed."
-            : result.Message,
-        _ => result.Message,
-    };
+        private readonly HidingViewModel _owner;
+        private readonly Func<IReadOnlyList<MonitorInfo>> _allMonitors;
+
+        public SpecializationUi(HidingViewModel owner, Func<IReadOnlyList<MonitorInfo>> allMonitors)
+        {
+            _owner = owner;
+            _allMonitors = allMonitors;
+        }
+
+        /// <summary>
+        /// The compositor is already running and waiting to take over the display; now walk the
+        /// user through Windows' own toggle. Blocks until the display actually leaves the desktop
+        /// or the user cancels.
+        /// </summary>
+        public bool GuideManualEnable(MonitorInfo physical, SpecializationResult failure, CancellationToken ct)
+            => RunGuided(physical, wantEnabled: true,
+                reason: "DesktopSplitter is not allowed to do this itself — Windows refuses the request " +
+                        "from an ordinary application. The compositor is already running and waiting, so " +
+                        "the moment you flip the toggle your split appears on the display.",
+                ct);
+
+        /// <summary>Undo could not be done programmatically either — walk the user back out.</summary>
+        public void GuideManualDisable(MonitorInfo physical, SpecializationResult failure, CancellationToken ct)
+            => RunGuided(physical, wantEnabled: false,
+                reason: "DesktopSplitter could not put the display back by itself, so please undo the " +
+                        "toggle. This window stays here until you do.",
+                ct);
+
+        private bool RunGuided(MonitorInfo physical, bool wantEnabled, string reason, CancellationToken ct)
+        {
+            IHidingUi? ui = _owner._ui;
+            System.Windows.Threading.Dispatcher? dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (ui is null || dispatcher is null) return false;
+
+            using var finished = new ManualResetEventSlim(false);
+            int succeeded = 0;
+            IGuidedHandle? handle = null;
+
+            MonitorInfo? placeOn = PickHostMonitor(physical);
+            _owner._log(wantEnabled
+                ? $"Showing the Windows Settings instructions on {placeOn?.DisplayLabel ?? "the only display"}."
+                : $"Showing recovery instructions on {placeOn?.DisplayLabel ?? "the only display"}.");
+
+            dispatcher.Invoke(() =>
+            {
+                handle = ui.ShowGuidedSettings(physical, wantEnabled, reason, placeOn, ok =>
+                {
+                    Interlocked.Exchange(ref succeeded, ok ? 1 : 0);
+                    finished.Set();
+                });
+            });
+
+            try
+            {
+                finished.Wait(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                dispatcher.Invoke(() => handle?.CloseFromCaller());
+                return false;
+            }
+
+            return Volatile.Read(ref succeeded) == 1;
+        }
+
+        private MonitorInfo? PickHostMonitor(MonitorInfo physical)
+            => CountdownPlacement.ChooseMonitor(_allMonitors(), physical.DeviceName);
+
+        public bool ConfirmKeep(MonitorInfo physical, int timeoutSeconds, CancellationToken ct)
+        {
+            IHidingUi? ui = _owner._ui;
+            System.Windows.Threading.Dispatcher? dispatcher =
+                System.Windows.Application.Current?.Dispatcher;
+            if (ui is null || dispatcher is null) return false;
+
+            using var answered = new ManualResetEventSlim(false);
+            int keep = 0;
+            ICountdownHandle? handle = null;
+
+            MonitorInfo? placeOn = PickHostMonitor(physical);
+            _owner._log(placeOn is null || SameDevice(placeOn.DeviceName, physical.DeviceName)
+                ? "Countdown will appear on the only available display."
+                : $"Countdown will appear on {placeOn.DisplayLabel} ({placeOn.DeviceName}), " +
+                  "away from the hidden monitor.");
+
+            dispatcher.Invoke(() =>
+            {
+                handle = ui.ShowCountdown(timeoutSeconds, placeOn,
+                    onKeep: () => { Interlocked.Exchange(ref keep, 1); answered.Set(); },
+                    onRevert: () => { Interlocked.Exchange(ref keep, 0); answered.Set(); });
+            });
+
+            // The window's own timer only animates; THIS wait is the auto-revert authority.
+            bool gotAnswer = answered.Wait(TimeSpan.FromSeconds(timeoutSeconds + 1), ct);
+
+            dispatcher.Invoke(() => handle?.CloseFromHelper());
+
+            if (!gotAnswer)
+            {
+                _owner._log($"No answer within {timeoutSeconds}s — reverting automatically.");
+                return false;
+            }
+            return Volatile.Read(ref keep) == 1;
+        }
+
+        private static bool SameDevice(string a, string b)
+            => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
 }

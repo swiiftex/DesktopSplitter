@@ -16,9 +16,14 @@ public partial class CountdownWindow : Window
     private DateTime _deadline;
     private bool _answered;
 
-    public CountdownWindow(int timeoutSeconds)
+    public CountdownWindow(int timeoutSeconds) : this(timeoutSeconds, null, null) { }
+
+    public CountdownWindow(int timeoutSeconds, string? heading, string? detail)
     {
         InitializeComponent();
+
+        if (!string.IsNullOrEmpty(heading)) HeadingText.Text = heading;
+        if (!string.IsNullOrEmpty(detail)) DetailText.Text = detail;
 
         TimeoutSeconds = Math.Max(1, timeoutSeconds);
         _deadline = DateTime.UtcNow.AddSeconds(TimeoutSeconds);
@@ -41,6 +46,25 @@ public partial class CountdownWindow : Window
         base.OnSourceInitialized(e);
         _timer.Start();
         Activate();
+    }
+
+    /// <summary>
+    /// Centres the dialog on whichever display is primary. For a general display change that is
+    /// the right place: it is where the user is looking, and the countdown auto-reverts anyway,
+    /// so it does not need to dodge the affected monitor.
+    /// </summary>
+    public void PlaceOnPrimary()
+    {
+        try
+        {
+            MonitorInfo? primary = DesktopSplitter.Interop.DisplayConfig.Enumerate()
+                .FirstOrDefault(m => m.IsPrimary);
+            if (primary is not null) PlaceOn(primary);
+        }
+        catch
+        {
+            // Leave it wherever WPF put it rather than failing the confirmation.
+        }
     }
 
     /// <summary>

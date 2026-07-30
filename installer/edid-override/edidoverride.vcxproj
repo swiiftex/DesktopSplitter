@@ -55,6 +55,10 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <!-- build\generated\Version.h is written by build.ps1 from the root
+           VERSION file; include it for DS_VERSION_STR when this tool wants to
+           report its version. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\build\generated;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>

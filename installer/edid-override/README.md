@@ -1,5 +1,29 @@
 # installer/edid-override — `edidoverride.exe`
 
+> # ⛔ DEPRECATED FOR HIDING DISPLAYS
+>
+> This tool adds a Microsoft VSDB to a monitor's EDID via a registry override,
+> to mark the display "specialized". **That does not work, and cannot be made to
+> work.** Microsoft: *"Displays may not be designated as HMDs or specialized
+> displays by overriding the EDID in software."*
+> ([source](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/specialized-monitors-compositor))
+>
+> `EDID_OVERRIDE` is read by monitor.sys, which sees the EDID only *after* the
+> display port driver already obtained its own copy — so the override never
+> reaches the decision. Verified in the field on 2026-07-28: a structurally
+> perfect override went live and the display stayed `Standard`.
+>
+> **The supported route is `Settings > System > Display > Advanced display >
+> Remove display from desktop`** (Enterprise / Pro for Workstations / IoT
+> Enterprise), programmatically `DisplayConfigSetDeviceInfo` with
+> `SET_MONITOR_SPECIALIZATION` (type 13). See [`docs/HIDING.md`](../../docs/HIDING.md).
+>
+> **This tool is retained only to REVERT an override on a machine where one was
+> already applied** — `guarded-revert` / `revert`. Its EDID patching, guarded
+> transaction and auto-revert are correct and well tested; they were simply
+> aimed at a mechanism that Windows does not honour. Do not use `apply` or
+> `guarded-apply` expecting a display to disappear.
+
 Inspects and patches a monitor's **EDID override** so Windows will treat the
 display as a **specialized (non-desktop) display**. This is the prerequisite for
 `dscomp --specialized`. The full user procedure is in [`docs/HIDING.md`](../../docs/HIDING.md).
@@ -97,8 +121,34 @@ authoritative one** — the GUI's is only cosmetic.
 | 3 | apply failed; any partial change was reverted |
 | 4 | devnode restart failed or the monitor did not return; reverted |
 | 5 | bad arguments |
+| 6 | nothing to do — the override already carries the VSDB |
 | 10 | user asked to revert; reverted |
 | 11 | countdown expired; auto-reverted |
+
+### Which EDID a patch is computed from
+
+There are **two** registry EDIDs and they can disagree:
+
+| Value | What it is |
+| --- | --- |
+| `Device Parameters\EDID_OVERRIDE\0,1,…` | what we install — **authoritative** for what Windows will apply |
+| `Device Parameters\EDID` | monitor.sys's **cache** of the effective EDID, refreshed when the monitor is enumerated |
+
+The tool patches from **the override when one exists**, falling back to the cache
+only when there is none (in which case the cache *is* the hardware EDID).
+
+This matters because the cache lags. Observed in the field: after a
+`guarded-revert` restored the original 512-byte CRU override, `Device
+Parameters\EDID` still held the previously applied 640-byte VSDB EDID for the
+rest of the session. Reading the cache made every retry conclude "a Microsoft
+VSDB is already present" and exit — a permanent wedge from a value that was
+merely stale. The tool now compares the two, logs the discrepancy explicitly,
+and proceeds from the override. The stale cache clears itself on the next
+devnode enumeration.
+
+"Already applied" is also its own exit code (**6**) rather than being folded
+into the generic failure 3, so a GUI can say "already done" instead of
+"something went wrong".
 
 ### Event security (DACL)
 

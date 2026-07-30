@@ -28,7 +28,10 @@ public:
 
     // 'coveredDevice' - the physical monitor dscomp hides.
     // 'targetDevice'  - segment 1's virtual monitor (config segments[0]).
-    bool Start(const std::wstring& coveredDevice, const std::wstring& targetDevice);
+    // 'launchDevice' is the virtual monitor new app windows should open on
+    // (config launchSegment). Empty disables that behaviour.
+    bool Start(const std::wstring& coveredDevice, const std::wstring& targetDevice,
+               const std::wstring& launchDevice);
     void Stop();
 
     // Display topology changed (re-basing moves every rect): drop cached rects.
@@ -44,12 +47,15 @@ private:
     void HandleEvent(DWORD event, HWND hwnd, LONG idObject, LONG idChild);
     void FlushPending();
     void Evaluate(HWND hwnd);
+    void EvaluateLaunch(HWND hwnd);
+    bool PassesWindowFilters(HWND hwnd, RECT& windowRect) const;
     bool ShouldRescue(HWND hwnd, RECT& windowRect) const;
     bool RefreshRects();
     bool RateLimit(HWND hwnd);
 
     std::wstring m_coveredDevice;
     std::wstring m_targetDevice;
+    std::wstring m_launchDevice;
 
     std::thread        m_thread;
     std::atomic<DWORD> m_threadId{0};
@@ -63,6 +69,9 @@ private:
 
     RECT  m_coveredRect = {};
     RECT  m_targetWork = {};
+    RECT  m_launchWork = {};
+    RECT  m_launchMonitor = {};
+    bool  m_haveLaunch = false;
     bool  m_rectsValid = false;
     DWORD m_rectsTick = 0;
     DWORD m_ownPid = 0;

@@ -19,6 +19,7 @@ constexpr int kExitNotElevated = 2;    // elevation required but absent
 constexpr int kExitApplyFailedReverted = 3;    // write/patch failed, reverted
 constexpr int kExitRestartFailedReverted = 4;    // devnode restart failed, reverted
 constexpr int kExitBadArgs = 5;    // argument error
+constexpr int kExitAlreadyApplied = 6;    // the override is already in place
 constexpr int kExitUserRevert = 10;   // user pressed revert
 constexpr int kExitTimeoutRevert = 11;   // countdown expired, auto-reverted
 

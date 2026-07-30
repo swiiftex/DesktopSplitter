@@ -6,6 +6,7 @@
 #include <d3d11_4.h>
 #include <d3dcompiler.h>
 #include <algorithm>
+#include <cmath>
 
 using Microsoft::WRL::ComPtr;
 
@@ -94,9 +95,8 @@ Renderer::~Renderer() {
     Shutdown();
 }
 
-bool Renderer::Init(HWND hwnd, const AppConfig& cfg,
-                    std::vector<SegmentShared>* segments, bool wantSpecialized) {
-    m_hwnd = hwnd;
+bool Renderer::InitDevice(const AppConfig& cfg,
+                          std::vector<SegmentShared>* segments) {
     m_cfg = cfg;
     m_segments = segments;
     m_cursors.resize(cfg.segments.size());
@@ -109,10 +109,76 @@ bool Renderer::Init(HWND hwnd, const AppConfig& cfg,
         m_paceTimer = ::CreateWaitableTimerW(nullptr, FALSE, nullptr);
     }
 
-    if (!CreateDevice()) return false;
-    if (!CreatePresenter(hwnd, wantSpecialized)) return false;
-    if (!CreatePipeline()) return false;
-    return true;
+    return CreateDevice();
+}
+
+// Step 2: choose the presenter. No window exists yet, and none is created here.
+PresenterKind Renderer::DecidePresenter(bool wantSpecialized, int waitSeconds,
+                                        int frameDeadlineSeconds) {
+    PresenterInit probe = m_presenterOptions;
+    probe.hwnd = nullptr;                 // the specialized path needs no window
+    probe.cfg = &m_cfg;
+    probe.device = m_gpu.device.Get();
+    probe.ctx = m_gpu.ctx.Get();
+    probe.factory = m_factory.Get();
+    probe.adapter = m_adapter.Get();
+    probe.ctxMutex = &m_gpu.mtx;
+
+    SpecializedAvailability avail;
+    avail.requested = wantSpecialized;
+
+    if (wantSpecialized) {
+        auto specialized = std::make_unique<SpecializedPresenter>();
+        if (specialized->TryAcquire(probe, avail, waitSeconds,
+                                    frameDeadlineSeconds)) {
+            m_acquiredSpecialized = std::move(specialized);
+        } else {
+            specialized->Shutdown();
+        }
+    }
+
+    m_selection = ChoosePresenter(avail);
+    if (m_selection.kind == PresenterKind::Specialized && !m_acquiredSpecialized) {
+        m_selection.kind = PresenterKind::Window;
+        m_selection.fellBack = true;
+    }
+    if (m_selection.kind == PresenterKind::Specialized) {
+        DS_LOG(L"presenter: SPECIALIZED - %s", m_selection.reason.c_str());
+    } else if (m_selection.fellBack) {
+        DS_WARN(L"presenter: falling back to the window path - %s",
+                m_selection.reason.c_str());
+    } else {
+        DS_LOG(L"presenter: window - %s", m_selection.reason.c_str());
+    }
+    return m_selection.kind;
+}
+
+// Step 3: bind the winner to the window (message-only in specialized mode).
+bool Renderer::FinishInit(HWND hwnd) {
+    m_hwnd = hwnd;
+
+    PresenterInit init = m_presenterOptions;
+    init.hwnd = hwnd;
+    init.cfg = &m_cfg;
+    init.device = m_gpu.device.Get();
+    init.ctx = m_gpu.ctx.Get();
+    init.factory = m_factory.Get();
+    init.adapter = m_adapter.Get();
+    init.ctxMutex = &m_gpu.mtx;
+
+    if (m_acquiredSpecialized) {
+        m_presenter = std::move(m_acquiredSpecialized);
+        if (!m_presenter->Initialize(init)) {
+            DS_ERR(L"specialized presenter failed to initialise after acquisition");
+            m_presenter->Shutdown();
+            m_presenter.reset();
+            return false;
+        }
+    } else {
+        m_presenter = std::make_unique<WindowPresenter>();
+        if (!m_presenter->Initialize(init)) return false;
+    }
+    return CreatePipeline();
 }
 
 bool Renderer::CreateDevice() {
@@ -180,56 +246,6 @@ bool Renderer::CreateDevice() {
     }
 
     return true;
-}
-
-// Chooses between the specialized display path and the window swapchain, and
-// falls back to the window with a logged reason whenever the specialized path
-// is not fully usable. The decision policy itself lives in PresenterSelect.h so
-// it can be unit-tested against mocked probe results.
-bool Renderer::CreatePresenter(HWND hwnd, bool wantSpecialized) {
-    PresenterInit init;
-    init.hwnd = hwnd;
-    init.cfg = &m_cfg;
-    init.device = m_gpu.device.Get();
-    init.ctx = m_gpu.ctx.Get();
-    init.factory = m_factory.Get();
-    init.adapter = m_adapter.Get();
-    init.ctxMutex = &m_gpu.mtx;
-
-    SpecializedAvailability avail;
-    avail.requested = wantSpecialized;
-
-    std::unique_ptr<SpecializedPresenter> specialized;
-    if (wantSpecialized) {
-        specialized = std::make_unique<SpecializedPresenter>();
-        if (!specialized->TryAcquire(init, avail)) {
-            specialized->Shutdown();
-            specialized.reset();
-        }
-    }
-
-    m_selection = ChoosePresenter(avail);
-    if (m_selection.kind == PresenterKind::Specialized && specialized) {
-        m_presenter = std::move(specialized);
-        if (m_presenter->Initialize(init)) {
-            DS_LOG(L"presenter: SPECIALIZED - %s", m_selection.reason.c_str());
-            return true;
-        }
-        m_presenter->Shutdown();
-        m_presenter.reset();
-        m_selection.kind = PresenterKind::Window;
-        m_selection.fellBack = true;
-        m_selection.reason = L"specialized presenter failed to initialise";
-    }
-
-    if (m_selection.fellBack) {
-        DS_WARN(L"presenter: falling back to the window path - %s",
-                m_selection.reason.c_str());
-    } else {
-        DS_LOG(L"presenter: window - %s", m_selection.reason.c_str());
-    }
-    m_presenter = std::make_unique<WindowPresenter>();
-    return m_presenter->Initialize(init);
 }
 
 bool Renderer::CreatePipeline() {
@@ -338,6 +354,37 @@ void Renderer::RenderFrame() {
     const UINT frameW = m_presenter->Width();
     const UINT frameH = m_presenter->Height();
     if (frameW == 0 || frameH == 0) return;
+
+    if (m_testPattern) {
+        // Slow colour cycle: proves frames are reaching the panel, and a frozen
+        // colour immediately tells you presentation stalled.
+        const double t = static_cast<double>(::GetTickCount64()) / 1000.0;
+        const float clear[4] = {
+            static_cast<float>(0.5 + 0.5 * sin(t * 0.7)),
+            static_cast<float>(0.5 + 0.5 * sin(t * 0.7 + 2.09)),
+            static_cast<float>(0.5 + 0.5 * sin(t * 0.7 + 4.19)),
+            1.0f
+        };
+        {
+            std::lock_guard<std::mutex> lock(m_gpu.mtx);
+            ID3D11RenderTargetView* rtvs[] = { rtv };
+            m_gpu.ctx->OMSetRenderTargets(1, rtvs, nullptr);
+            m_gpu.ctx->ClearRenderTargetView(rtv, clear);
+            m_gpu.ctx->OMSetRenderTargets(0, nullptr, nullptr);
+        }
+        const HRESULT thr = m_presenter->EndFrame();
+        g_diagPresentHr.store(static_cast<long>(thr), std::memory_order_relaxed);
+        if (FAILED(thr)) {
+            const HRESULT reason = m_gpu.device->GetDeviceRemovedReason();
+            DS_ERR(L"test-pattern present failed: 0x%08X (our device: %s)",
+                   static_cast<unsigned>(thr),
+                   SUCCEEDED(reason) ? L"healthy" : L"REMOVED");
+            m_fatalRuntimeError.store(true, std::memory_order_release);
+            m_stop.store(true, std::memory_order_release);
+            if (m_hwnd) ::PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+        }
+        return;
+    }
 
     const size_t segCount = m_cfg.segments.size();
 
@@ -505,9 +552,23 @@ void Renderer::RenderFrame() {
     g_diagPresentTicks.fetch_add(pt1.QuadPart - pt0.QuadPart, std::memory_order_relaxed);
     g_diagPresentHr.store(static_cast<long>(hr), std::memory_order_relaxed);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-        DS_ERR(L"device removed during Present: %s",
-               HrString(m_gpu.device->GetDeviceRemovedReason()));
+        // Do not blame our D3D device without checking it. A specialized
+        // presenter reports the DISPLAY stack's errors through the same
+        // HRESULT, and blaming the wrong device sent the last investigation
+        // down a blind alley: GetDeviceRemovedReason() returned S_OK because
+        // our device was perfectly healthy.
+        const HRESULT removedReason = m_gpu.device->GetDeviceRemovedReason();
+        if (SUCCEEDED(removedReason)) {
+            DS_ERR(L"presenter '%s' returned 0x%08X, but OUR D3D11 device is "
+                   L"healthy (GetDeviceRemovedReason = S_OK). The failure is "
+                   L"inside the presentation path, not the render device.",
+                   m_presenter->Name(), static_cast<unsigned>(hr));
+        } else {
+            DS_ERR(L"our D3D11 device was removed: %s", HrString(removedReason));
+        }
+        m_fatalRuntimeError.store(true, std::memory_order_release);
         m_stop.store(true, std::memory_order_release);
+        if (m_hwnd) ::PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
     } else if (FAILED(hr)) {
         DS_WARN(L"Present failed: %s", HrString(hr));
     }
@@ -562,6 +623,19 @@ void Renderer::ThreadMain() {
     while (!m_stop.load(std::memory_order_acquire)) {
         RenderFrame();
         ++presented;
+
+        // A presenter that failed after it was already presenting means the
+        // display went dark. Stop rather than limping, and make the window
+        // thread quit so the process exits with a distinct code.
+        if (m_presenter && m_presenter->Failed()) {
+            DS_ERR(L"presenter '%s' reported an unrecoverable failure - stopping",
+                   m_presenter->Name());
+            m_fatalRuntimeError.store(true, std::memory_order_release);
+            m_stop.store(true, std::memory_order_release);
+            if (m_hwnd) ::PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+            break;
+        }
+
         PaceFrame();
 
         if (LogIsVerbose()) {
@@ -620,6 +694,12 @@ void Renderer::StopThread() {
 
 void Renderer::Shutdown() {
     m_cursors.clear();
+    if (m_acquiredSpecialized) {
+        // Decided but never bound (startup aborted between steps 2 and 3):
+        // release the display promptly so Windows can hand it back.
+        m_acquiredSpecialized->Shutdown();
+        m_acquiredSpecialized.reset();
+    }
     if (m_presenter) {
         m_presenter->Shutdown();
         m_presenter.reset();

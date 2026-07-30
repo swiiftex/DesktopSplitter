@@ -64,9 +64,14 @@ jobs:
       # build.ps1 builds everything in order: driver (test-signed catalog),
       # compositor, devcreate, edidoverride, app publish, then the setup exe
       # that embeds all of it. Inf2CatUseLocalTime is already handled inside.
+      # -NoVersionBump: the root VERSION file is the single source of truth and
+      # is bumped by developers' local builds. CI must never increment it -
+      # nothing here could commit the change back, so bumping would only cause
+      # version drift and a dirty working tree.
       - name: Build all (Release)
+        id: build
         shell: pwsh
-        run: .\build.ps1 -Configuration Release
+        run: .\build.ps1 -Configuration Release -NoVersionBump
 
       # -------------------------------------------------------------- check
       # CI runners execute elevated, so the shipping exe can run directly.
@@ -81,12 +86,28 @@ jobs:
           & $exe /selftest | Write-Host
           if ($LASTEXITCODE -ne 0) { throw "/selftest failed ($LASTEXITCODE)" }
 
+      # The real product version comes from the root VERSION file (build.ps1
+      # also emits it as a step output and to build\generated\version.txt).
+      # A v* tag still wins, so a tagged release is named after its tag.
       - name: Stamp artifact name
         id: stamp
         shell: pwsh
         run: |
-          $version = "0.${{ github.run_number }}"
-          if ("${{ github.ref_type }}" -eq "tag") { $version = "${{ github.ref_name }}".TrimStart('v') }
+          $version = "${{ steps.build.outputs.version }}"
+          if (-not $version) {
+            $version = (Get-Content "build\generated\version.txt" -Raw).Trim()
+          }
+          if (-not $version) { throw "could not determine the product version" }
+
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tagVersion = "${{ github.ref_name }}".TrimStart('v')
+            if ($tagVersion -ne $version) {
+              Write-Warning "tag $tagVersion does not match VERSION $version - using the tag"
+            }
+            $version = $tagVersion
+          }
+
+          Write-Host "Product version: $version"
           "version=$version" >> $env:GITHUB_OUTPUT
           Copy-Item "installer\setup\bin\x64\Release\DesktopSplitterSetup.exe" `
                     "DesktopSplitterSetup-$version.exe"

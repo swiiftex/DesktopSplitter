@@ -67,6 +67,93 @@ const wchar_t* ConnectionKindName(disp::DisplayMonitorConnectionKind k) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Monitor specialization (the SUPPORTED path)
+// ---------------------------------------------------------------------------
+//
+// Microsoft is explicit that a display may NOT be designated specialized by
+// overriding its EDID in software; for an off-the-shelf panel the only
+// supported route is the Settings "Remove display from desktop" toggle. That
+// toggle is backed by DisplayConfigGetDeviceInfo/SetDeviceInfo types 12/13,
+// which ship in wingdi.h but are omitted from the documented constants table.
+//
+// GET is read-only and free: its two "available" bits say whether this SKU and
+// this specific panel are eligible, without changing anything.
+
+constexpr int kGetMonitorSpecialization = 12;
+
+typedef struct _DS_GET_MONITOR_SPECIALIZATION {
+    DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    union {
+        struct {
+            UINT32 isSpecializationEnabled : 1;
+            UINT32 isSpecializationAvailableForMonitor : 1;
+            UINT32 isSpecializationAvailableForSystem : 1;
+            UINT32 reserved : 29;
+        } bits;
+        UINT32 value;
+    };
+} DS_GET_MONITOR_SPECIALIZATION;
+
+void ProbeMonitorSpecialization() {
+    ::wprintf(L"== monitor specialization (DisplayConfig type 12, read-only) ==\n");
+
+    UINT32 pathCount = 0;
+    UINT32 modeCount = 0;
+    if (::GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) !=
+        ERROR_SUCCESS) {
+        ::wprintf(L"  GetDisplayConfigBufferSizes failed\n\n");
+        return;
+    }
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+    if (::QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(),
+                             &modeCount, modes.data(), nullptr) != ERROR_SUCCESS) {
+        ::wprintf(L"  QueryDisplayConfig failed\n\n");
+        return;
+    }
+    paths.resize(pathCount);
+
+    for (const auto& path : paths) {
+        DISPLAYCONFIG_TARGET_DEVICE_NAME name = {};
+        name.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+        name.header.size = sizeof(name);
+        name.header.adapterId = path.targetInfo.adapterId;
+        name.header.id = path.targetInfo.id;
+        const LONG nr = ::DisplayConfigGetDeviceInfo(&name.header);
+
+        ::wprintf(L"  --- target id %u ---\n", path.targetInfo.id);
+        if (nr == ERROR_SUCCESS) {
+            ::wprintf(L"      monitor  : %s\n", name.monitorFriendlyDeviceName);
+            ::wprintf(L"      devpath  : %s\n", name.monitorDevicePath);
+        }
+
+        DS_GET_MONITOR_SPECIALIZATION spec = {};
+        spec.header.type =
+            static_cast<DISPLAYCONFIG_DEVICE_INFO_TYPE>(kGetMonitorSpecialization);
+        spec.header.size = sizeof(spec);
+        spec.header.adapterId = path.targetInfo.adapterId;
+        spec.header.id = path.targetInfo.id;
+
+        const LONG r = ::DisplayConfigGetDeviceInfo(&spec.header);
+        if (r != ERROR_SUCCESS) {
+            ::wprintf(L"      SPECIALIZATION: query failed (%ld)%s\n", r,
+                      r == ERROR_INVALID_PARAMETER
+                          ? L"  <- this build may not support type 12"
+                          : L"");
+            continue;
+        }
+        ::wprintf(L"      SPECIALIZATION raw value 0x%08X\n", spec.value);
+        ::wprintf(L"        enabled now              : %s\n",
+                  spec.bits.isSpecializationEnabled ? L"YES" : L"no");
+        ::wprintf(L"        available for THIS monitor: %s\n",
+                  spec.bits.isSpecializationAvailableForMonitor ? L"YES" : L"NO");
+        ::wprintf(L"        available for THIS system : %s\n",
+                  spec.bits.isSpecializationAvailableForSystem ? L"YES" : L"NO");
+    }
+    ::wprintf(L"\n");
+}
+
 void PrintOsInfo() {
     ::wprintf(L"== OS ==\n");
     HKEY key = nullptr;
@@ -201,6 +288,7 @@ void PrintEdidSummary(const disp::DisplayMonitor& monitor) {
 
 int Run() {
     PrintOsInfo();
+    ProbeMonitorSpecialization();
     const std::vector<GdiMonitor> gdi = EnumerateGdiMonitors();
     PrintGdiMonitors(gdi);
 

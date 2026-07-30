@@ -17,46 +17,197 @@ what is not.
 
 ---
 
-## Status: what is verified vs experimental
+> # ⛔ THE EDID-OVERRIDE APPROACH IS DEAD — AND UNNECESSARY
+>
+> The override was applied for real on 2026-07-28. It wrote cleanly, the devnode
+> restarted healthy, the monitor kept working — and the display did **not**
+> become specialized. Investigation found the reason, and it is not a bug we can
+> fix. Microsoft states it directly:
+>
+> > "Displays may **not** be designated as HMDs or specialized displays by
+> > overriding the EDID in software."
+> > — [Specialized monitors: custom compositor](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/specialized-monitors-compositor)
+>
+> **The good news: the supported route is available on this exact machine right
+> now, and needs no EDID work at all.** A read-only probe of
+> `DisplayConfigGetDeviceInfo(GET_MONITOR_SPECIALIZATION)` returns `0x00000006`
+> for the Philips: *available for this monitor* **YES**, *available for this
+> system* **YES**.
+>
+> **Use `Settings > System > Display > Advanced display > Remove display from
+> desktop`.** `installer/edid-override` is retained only as a recovery tool for
+> machines where it was already applied. Do not use it to try to hide a display.
+>
+> Full evidence in "Field failure analysis" at the end of this document.
+
+## Status
 
 | Piece | Status |
 | --- | --- |
-| OS edition gate | **Verified cleared.** `ProfessionalWorkstation`, build 26200.8875 (25H2). `DisplayManager::Create` succeeds and enumerates 36 targets. |
-| Target identification | **Verified.** The Philips 49M2C8900 is found as a `DisplayTarget`, correlated to `\\.\DISPLAY1`. |
-| The blocker | **Verified present.** `DisplayMonitorUsageKind` is `Standard` for both attached monitors, and neither EDID contains a Microsoft VSDB. |
-| EDID patch logic | **Verified against the real monitor's actual bytes** (in memory, nothing written). See "EDID override" below. |
-| EDID override *applied* | **NOT DONE.** Nobody has written the override yet. This is the next live step. |
-| Windows accepting the override and flipping `UsageKind` to `SpecialPurpose` | **UNVERIFIED — this is the real unknown.** |
-| `dscomp --specialized` acquisition | **UNVERIFIED.** Cannot run until `UsageKind` changes; today it correctly falls back with a logged reason. |
-| `dscomp --specialized` presentation loop | **UNVERIFIED AND UNREACHABLE so far.** It compiles and is structured, but no frame has ever been scanned out through it. |
-| Guarded transaction (arm / keep / revert / timeout) | **Verified in `--dry-run`**: all three outcomes produce exit 0 / 10 / 11 and the log is written. The registry write and the devnode restart inside it are **unverified** - nobody has restarted a real monitor yet. |
-| Fallback to the window path | **Verified.** 14 unit tests over all 64 probe-outcome combinations. |
+| OS edition gate | **Verified cleared.** `ProfessionalWorkstation`, build 26200.8875 (25H2). |
+| Specialization available for this monitor | **VERIFIED YES.** `GET_MONITOR_SPECIALIZATION` returns `0x6` for both attached monitors: available for monitor *and* for system. |
+| EDID-override route | **DEAD — confirmed unsupported by Microsoft.** Applied for real; display did not become specialized. Do not pursue. |
+| `installer/edid-override` | **Deprecated for hiding.** Retained as a recovery tool only. Its EDID patching, guarded transaction and auto-revert are all correct and tested — they were simply aimed at the wrong mechanism. |
+| Settings toggle / `SET_MONITOR_SPECIALIZATION` | **Not yet implemented.** This is the replacement work item. |
+| `dscomp --specialized` acquisition | **Unverified**, but no longer blocked on `UsageKind` (see below). |
+| `dscomp --specialized` presentation loop | **Unverified and never exercised.** Compiles; no frame has been scanned out. |
+| Fallback to the window path | **Verified.** 12 unit tests across all 64 probe-outcome combinations. |
 
-Treat everything from "EDID override applied" downward as experimental. The
-window path is unchanged and remains the default.
+The window path is unchanged and remains the default.
 
 ---
 
-## Why the EDID has to change
+## Why the EDID route fails (corrected)
 
-Windows decides whether a display is "specialized" from its EDID. It looks for a
-**Microsoft Vendor-Specific Data Block** in a CTA-861 extension: IEEE
-registration bytes `5C 12 CA`, version `0x03`, with the **desktop-usage bit
-clear**. If it is there, the monitor is marked non-desktop
-(`DisplayMonitorUsageKind::SpecialPurpose`) and only a `DisplayManager` client
-can drive it.
+An earlier version of this document said the EDID was the only way in and that
+no Settings toggle existed. **Both claims were wrong** — they are the exact
+inverse of the truth, and they cost a night of field debugging. The record:
 
-The Philips 49M2C8900's EDID does not have one — confirmed by probe. So there is
-nothing to toggle in Settings; the display never becomes eligible. The only way
-in is to override the EDID that Windows reads.
+- Windows *does* read a Microsoft VSDB from a display's EDID to mark it
+  specialized — but only from the **firmware** EDID. The docs are explicit that
+  the designation may **not** be made by overriding the EDID in software.
+- `EDID_OVERRIDE` is consumed by **monitor.sys**, which reads the EDID *after*
+  the graphics stack already has its own copy: the display port driver calls
+  `DxgkDdiQueryDeviceDescriptor` during initialisation, and monitor.sys calls it
+  later. A monitor-devnode override therefore never reaches the decision.
+- **A Settings toggle does exist**, on Enterprise / **Pro for Workstations** /
+  IoT Enterprise — which is this machine — and for an off-the-shelf panel it is
+  the *only* supported route.
 
-> There is no Settings UI to make an ordinary monitor specialized. "Advanced
-> display" only ever *shows* what the EDID already declares. Do not go looking
-> for a toggle; there isn't one until the EDID changes.
+## The supported route
+
+`Settings > System > Display > Advanced display > Remove display from desktop`.
+
+**This works on the Philips today — verified in the field.** When the user
+clicks it the display leaves the desktop and goes black, which is correct: the
+compositor window that had been covering it dies with the desktop, so nothing
+is driving the panel any more.
+
+That makes **start order the whole game**.
+
+> ### The rule
+>
+> **Start `dscomp --wait-for-target` FIRST. Toggle the display off the desktop
+> SECOND.**
+>
+> Started first, dscomp is already polling and acquires the display the instant
+> it becomes available — the black period is a blink. Toggled first, the panel
+> sits dark until something acquires it, and dscomp cannot even *find* it any
+> more (a non-desktop display is gone from `EnumDisplayDevices`, so
+> `physicalDevice` no longer resolves and dscomp exits 3).
+
+Programmatically the toggle is `DisplayConfigSetDeviceInfo` with
+`SET_MONITOR_SPECIALIZATION` (type 13) — currently returning
+`ERROR_INVALID_PARAMETER`, under investigation by the app. The Settings toggle
+is the working path today.
+
+`GET` (type 12) is free and read-only; `DisplayProbe` reports its three bits.
+On this machine both "available" bits are set for both monitors (`0x6`).
+
+Two caveats that matter:
+
+- **`DisplayMonitorUsageKind` is not a reliable success signal.** A display
+  specialized through the toggle is still reported as `Standard`
+  ([open Windows bug](https://github.com/microsoft/Windows-classic-samples/issues/191)).
+  `dscomp` no longer gates on it — acquisition succeeding is the real test.
+- The toggle is offered only for **non-primary** displays, and there are field
+  reports of users unable to restore a specialized display. Keep a guarded,
+  auto-reverting wrapper around any automated use of `SET`.
 
 ---
 
-## Procedure — the guided (recommended) path
+## MANUAL TEST RECIPE
+
+> ### Run 1 first: `--test-pattern`
+>
+> The 2026-07-28 live test proved acquisition works and the **first present**
+> failed. So validate presentation in isolation before involving capture at all.
+> `--test-pattern` draws a cycling solid colour with **no capture threads**:
+>
+> * panel shows shifting colour -> presentation works, any black screen is a
+>   capture problem;
+> * panel stays black -> the fault is in the scanout loop, and the log says
+>   which call returned what.
+
+What to run, in what order, and what output proves it worked. Have a second
+monitor connected so you can always see the console.
+
+### 1. Check eligibility (read-only, no side effects)
+
+```powershell
+compositoruildd\Release\DisplayProbe.exe --connected-only
+```
+
+Confirm `SPECIALIZATION raw value 0x00000006` on the target: eligible for both
+monitor and system, not yet enabled.
+
+### 2. RUN 1 - prove presentation, no capture
+
+From a console **on your other monitor**:
+
+```powershell
+compositoruildd\Release\dscomp.exe --verbose --test-pattern --wait-for-target 60
+```
+
+Wait for the countdown, **then** turn on
+`Settings > System > Display > Advanced display > Remove display from desktop`.
+
+Success looks like:
+
+```
+specialized: render device and target share adapter LUID ...
+specialized: shared scanout fence created
+specialized: acquired '\.\DISPLAY1' at 5120x1440 with 2 primaries
+--test-pattern: drawing a cycling solid colour, NO capture threads.
+specialized: FIRST FRAME SCANNED OUT - signalled DeskSplitSpecializedLive
+```
+
+**and the panel slowly cycling through colours.** That is the scanout loop
+proven end to end.
+
+If it fails instead, the log now names the failing call and, critically, whether
+*our* device is healthy:
+
+```
+presenter 'specialized' returned 0x887A0005, but OUR D3D11 device is healthy
+(GetDeviceRemovedReason = S_OK). The failure is inside the presentation path.
+```
+
+### 3. RUN 2 - the real thing
+
+Only once run 1 shows colour. Turn the toggle back **off**, then:
+
+```powershell
+compositoruildd\Release\dscomp.exe --verbose --wait-for-target 60
+```
+
+Wait for the countdown, toggle on. Success is the same
+`FIRST FRAME SCANNED OUT` line plus the panel showing your virtual monitors.
+
+### 4. If it does not work
+
+| Symptom | Meaning |
+| --- | --- |
+| `ADAPTER MISMATCH` | The render device is on a different GPU than the acquired target. Report the two LUIDs. |
+| `could not create a shared scanout fence` | Fence interop failed; presentation is running unsupported. Report it. |
+| `no frame was scanned out within 20 second(s)` then exit **20** | Acquired but never presented. Panel is specialized and black - **turn the toggle back off.** |
+| Countdown runs out, `falling back to the window path` | The toggle never took. dscomp exits 0, nothing is broken. |
+| Exit **3**, "must be started BEFORE the display is removed" | You toggled first. Toggle off, start again from step 2. |
+
+### 5. Cleanup
+
+Stop dscomp (Ctrl+C or `Global\DeskSplitCompositorStop`) - it releases the
+display on every exit path - then turn the toggle **off**.
+
+## DEPRECATED: the EDID-override procedures
+
+> Everything from here to "Tools reference" describes the **EDID-override**
+> mechanism, which is now known not to work for hiding a display. It is kept
+> because the guarded transaction is still the right way to *undo* an override
+> on a machine where one was applied. Do not follow it to hide a display — use
+> the Settings toggle above.
+
+### Guided path (EDID override — deprecated)
 
 **Use the GUI.** The control app drives
 `edidoverride guarded-apply`, which is a *transaction*: it applies the override,
@@ -95,7 +246,7 @@ To undo later, use the app's **Restore physical display**, or run
 
 ---
 
-## Procedure — manual CLI path (recovery and debugging)
+### Manual CLI path (EDID override — recovery and debugging)
 
 The steps below do the same thing by hand. They remain supported and are what
 you use when the GUI is not available — but prefer the guided path above,
@@ -268,3 +419,81 @@ to stray and nothing can open behind the compositor.
 | `compositor\tests\GeometryProbe` | Unit tests for confinement/rescuer geometry | Yes |
 | `installer\edid-override\edidoverride` | Inspect / patch / revert the EDID override | `list`/`dump`/`verify`/`selftest` yes; `apply`/`revert` need `--yes` + elevation |
 | `edidoverride guarded-apply --dry-run` | Walk the whole guarded transaction, firing the real events, writing nothing | Yes, and needs no elevation |
+
+
+---
+
+## Field failure analysis (2026-07-28)
+
+Two independent problems, found from the guard log plus a read-only dump of
+every EDID source.
+
+### Problem 1 — a stale cache wedged every retry (FIXED)
+
+`guarded-apply` refused to run seven times in a row with *"a Microsoft VSDB is
+already present"* (exit 3), while the override key held the original CRU bytes
+and no backup existed.
+
+There are two registry EDIDs and they had diverged:
+
+| Value | Content at 01:45 |
+| --- | --- |
+| `EDID_OVERRIDE ..3` | 512 bytes, CRU original, **no VSDB** — the revert had worked |
+| `Device Parameters\EDID` | still the previously applied 640-byte EDID, **VSDB present** |
+
+`Device Parameters\EDID` is monitor.sys's **cache**; it lagged a full session
+behind the override. The tool read the cache, saw a VSDB that no longer existed
+anywhere authoritative, and refused forever.
+
+Fixed: patches are now computed from the **override when one exists** (the cache
+only when there is none, where it *is* the hardware EDID). A disagreement
+between the two is logged explicitly as stale rather than treated as a veto, and
+"already applied" is now its own exit code (**6**) instead of the generic
+failure 3. Verified: all sources now agree at 512 bytes with no VSDB — the stale
+cache cleared itself on the next devnode enumeration, as expected.
+
+### Problem 2 — the mechanism itself (NOT FIXABLE)
+
+The override *was* live and correct, and the display still did not become
+specialized.
+
+Structural audit of the exact 640-byte EDID the tool produced, rebuilt from the
+current CRU bytes:
+
+- Base header valid, **all five block checksums valid**, extension count
+  correctly incremented 3 → 4.
+- All seven original CTA data blocks and all three DTDs preserved byte for byte;
+  only bytes 126 and 127 of the base block changed.
+- The VSDB is well-formed: `75 5C 12 CA 03 02` — tag 3, length 21, Microsoft
+  OUI, version 3, **desktop-usage bit clear**.
+- **The block-map hypothesis is false**: block 1 is a CTA extension (`0x02`),
+  not a Block Map (`0xF0`). This EDID has no block map to update. (The patcher
+  now handles block maps correctly anyway — see below.)
+- One genuine oddity: the VSDB lands in the **second** CTA extension (block 4);
+  the first is block 1. That was the last remaining structural suspect.
+
+It turned out not to matter, because the mechanism is closed by design:
+
+> "Displays may **not** be designated as HMDs or specialized displays by
+> overriding the EDID in software."
+
+`EDID_OVERRIDE` is consumed by monitor.sys, which reads the EDID *after* the
+display port driver has already obtained its own copy via
+`DxgkDdiQueryDeviceDescriptor`. The override never reaches the decision. No
+registry knob (`SpecializedDisplays`, `NonDesktop`, …) exists as an alternative,
+and no one has ever reported success with this approach.
+
+### Collateral fixes made anyway
+
+- **Block-map correctness.** Appending a block to an EDID that *does* have a
+  block map would have left the map describing one block fewer than exists,
+  making the appended block invisible to any parser that trusts it. The patcher
+  now rewrites and re-checksums the map, and `VerifyRoundTrip` rejects an
+  inconsistent one. Covered by five synthetic-EDID selftest cases (block map
+  present, map rewritten, inconsistent map detected, in-place insert preferred,
+  multi-CTA finder) that the real monitor cannot exercise.
+- **`UsageKind` is no longer a gate.** `dscomp` used to refuse unless
+  `UsageKind == SpecialPurpose`. A display specialized through the *supported*
+  route is still reported as `Standard`, so that check would have rejected a
+  perfectly acquirable display. It is now advisory and logged; acquisition
+  succeeding is the real test.

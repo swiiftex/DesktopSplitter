@@ -75,13 +75,41 @@
             <Setter Property="Canvas.Top" Value="{Binding Y}"/>
         </Style>
 
-        <!-- A numbered zone -->
+        <!-- A numbered zone. Clicking selects it; the selected zone gets an accent border. -->
         <DataTemplate x:Key="ZoneTemplate">
             <Border Width="{Binding W}" Height="{Binding H}" ClipToBounds="True"
                     Background="{StaticResource ZoneFill}"
                     BorderBrush="{StaticResource ZoneStroke}" BorderThickness="1"
-                    CornerRadius="3">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    CornerRadius="3"
+                    Tag="{Binding Index}"
+                    MouseLeftButtonDown="Zone_MouseLeftButtonDown"
+                    Cursor="Hand">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="BorderThickness" Value="3"/>
+                                <Setter Property="Background" Value="#FF31456B"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock Text="{Binding RoleBadge}" FontSize="9" FontWeight="Bold"
+                               TextAlignment="Center" Foreground="{StaticResource AccentBrush}"
+                               Margin="0,0,0,2">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasRoleBadge}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <TextBlock Text="{Binding Number}" FontSize="30" FontWeight="Bold"
                                TextAlignment="Center" Foreground="{StaticResource ZoneNumberBrush}"/>
                     <TextBlock Text="{Binding SizeText}" FontSize="12" TextAlignment="Center"
@@ -178,7 +206,11 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="DesktopSplitter" FontSize="19" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="DesktopSplitter" FontSize="19" FontWeight="SemiBold"/>
+                <TextBlock x:Name="VersionLabel" VerticalAlignment="Bottom" Margin="8,0,0,3"
+                           FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
             <TextBlock Text="{Binding DriverStatus}" Foreground="{StaticResource MutedBrush}"
                        Margin="0,4,0,0" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding CompositorStatus}" Foreground="{StaticResource MutedBrush}"
@@ -225,6 +257,24 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
+
+                <TextBlock Text="STARTUP" Style="{StaticResource SectionHeader}"/>
+                <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
+                        BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,16">
+                    <StackPanel>
+                        <CheckBox Content="Start DesktopSplitter with Windows"
+                                  IsChecked="{Binding StartWithWindows}"
+                                  Foreground="{StaticResource ForegroundBrush}"
+                                  IsEnabled="{Binding IsIdle}"/>
+                        <CheckBox Content="Re-apply the last split automatically when DesktopSplitter starts"
+                                  IsChecked="{Binding ApplyOnStartup}"
+                                  Foreground="{StaticResource ForegroundBrush}"
+                                  IsEnabled="{Binding IsIdle}" Margin="0,8,0,0"/>
+                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
+                                   Text="The split is always torn down when DesktopSplitter exits, so the desktop is never left split with nothing driving it. A split that was still running at exit comes back on the next launch; one you reverted yourself does not."/>
+                    </StackPanel>
+                </Border>
 
                 <TextBlock Text="LAYOUT" Style="{StaticResource SectionHeader}"/>
                 <ListBox ItemsSource="{Binding Layouts}"
@@ -301,6 +351,73 @@
                     </ItemsControl.ItemsPanel>
                 </ItemsControl>
 
+                <!-- Properties for the zone selected on the canvas -->
+                <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource AccentBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="14,12" Margin="0,4,0,12"
+                        DataContext="{Binding SelectedSegment}" IsEnabled="{Binding DataContext.IsIdle,
+                            RelativeSource={RelativeSource AncestorType=Window}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Title, StringFormat={}{0} properties}"
+                                   FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
+
+                        <RadioButton GroupName="PrimaryZone"
+                                     Content="Primary display (taskbar, Start menu, Alt-Tab, system tray)"
+                                     IsChecked="{Binding IsPrimary}"
+                                     Foreground="{StaticResource ForegroundBrush}"/>
+
+                        <RadioButton GroupName="LaunchZone" Margin="0,8,0,0"
+                                     Content="Open new application windows here"
+                                     IsChecked="{Binding IsLaunchTarget}"
+                                     Foreground="{StaticResource ForegroundBrush}"/>
+
+                        <CheckBox Margin="0,8,0,0"
+                                  Content="Show the taskbar on this zone"
+                                  IsChecked="{Binding EffectiveShowTaskbar, Mode=OneWay}"
+                                  Foreground="{StaticResource ForegroundBrush}">
+                            <CheckBox.Style>
+                                <Style TargetType="CheckBox">
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                    <Setter Property="ToolTip"
+                                            Value="Windows draws a taskbar with app buttons and a clock here."/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TaskbarLocked}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                            <Setter Property="ToolTip"
+                                                    Value="Windows always draws the main taskbar on the primary display, so this cannot be turned off here."/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </CheckBox.Style>
+                        </CheckBox>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FF1A1F29" BorderBrush="{StaticResource PanelBorder}"
+                        BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Which zone should be primary?" FontWeight="SemiBold" FontSize="12"
+                                   Margin="0,0,0,6"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11.5"
+                                   Text="Measured on this PC: a NON-primary zone gets a taskbar with app buttons and a clock, but NOT the system tray icons (network, volume, battery) and NOT the notification centre — Windows keeps those on the primary display only."/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11.5"
+                                   Margin="0,6,0,0"
+                                   Text="So: make the centre zone primary if you want games and the Start menu there and only need a clock on the side. Make a SIDE zone primary — and set &quot;open new windows here&quot; on the centre — if you want the full tray and notification centre on the side instead."/>
+                        <Button Content="Don't steer new windows (let Windows decide)"
+                                Command="{Binding ClearLaunchSegmentCommand}"
+                                HorizontalAlignment="Left" Margin="0,10,0,0" FontSize="11"/>
+                    </StackPanel>
+                </Border>
+
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
                     <Button Content="Reset to layout defaults" Command="{Binding ResetSegmentsCommand}"/>
                 </StackPanel>
@@ -313,7 +430,7 @@
                     <StackPanel>
                         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11.5"
                                    Margin="0,0,0,10"
-                                   Text="Removes the physical monitor from the Windows desktop entirely instead of just covering it, by marking it as a specialized display. Every step is guarded: the change undoes itself automatically unless you confirm it."/>
+                                   Text="Removes the physical monitor from the Windows desktop entirely instead of just covering it — the same thing as Settings &gt; Advanced display &gt; &quot;Remove display from desktop&quot;. Enable only records the intent; the monitor is hidden during Apply, once segment 1 is primary, and it comes back automatically unless you confirm within 10 seconds. Revert always restores it."/>
 
                         <ItemsControl ItemsSource="{Binding Rows}">
                             <ItemsControl.ItemTemplate>
@@ -350,11 +467,9 @@
                         </ItemsControl>
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="Enable hiding..." Command="{Binding EnableCommand}" MinWidth="130"/>
+                            <Button Content="Enable hiding..." Command="{Binding EnableCommand}" MinWidth="140"/>
                             <Button Content="Disable hiding..." Command="{Binding DisableCommand}"
-                                    Margin="8,0,0,0" MinWidth="130"/>
-                            <Button Content="Test run (no changes)" Command="{Binding TestRunCommand}"
-                                    Margin="8,0,0,0"/>
+                                    Margin="8,0,0,0" MinWidth="140"/>
                             <Button Content="Re-check" Command="{Binding RefreshCommand}" Margin="8,0,0,0"/>
                         </StackPanel>
 

@@ -105,6 +105,9 @@ public static class DisplayConfig
             {
                 DeviceName = gdiName,
                 Index = DeviceIndex(gdiName),
+                AdapterIdLow = path.targetInfo.adapterId.LowPart,
+                AdapterIdHigh = path.targetInfo.adapterId.HighPart,
+                TargetId = path.targetInfo.id,
                 FriendlyName = string.IsNullOrWhiteSpace(target.FriendlyName)
                     ? FallbackName(gdiName)
                     : target.FriendlyName.Trim(),

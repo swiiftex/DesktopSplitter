@@ -31,10 +31,36 @@ struct Monitor {
     std::wstring regPath;       // SYSTEM\...\Enum\DISPLAY\PHLC310\7&...
     std::wstring gdiName;       // \\.\DISPLAY1 (empty when not on the desktop)
     std::wstring friendlyName;
-    Bytes        edid;
+    Bytes        edid;          // Device Parameters\EDID - monitor.sys's CACHE
+    Bytes        overrideEdid;  // EDID_OVERRIDE blocks - what we actually control
     bool         hasOverride = false;
     bool         hasBackup = false;
 };
+
+// Which EDID a patch must be computed from.
+//
+// Device Parameters\EDID is a CACHE that monitor.sys refreshes when the monitor
+// is enumerated. It can lag the override key by a whole session: after a revert
+// restored the original override, the cache still held the previously applied
+// bytes, so every retry saw a Microsoft VSDB that no longer existed anywhere
+// authoritative and refused to run. The override key is authoritative for what
+// Windows will actually apply, so prefer it whenever it exists.
+const Bytes& SourceEdid(const Monitor& m) {
+    return m.overrideEdid.empty() ? m.edid : m.overrideEdid;
+}
+
+const wchar_t* SourceEdidName(const Monitor& m) {
+    return m.overrideEdid.empty() ? L"Device Parameters\\EDID (no override installed)"
+                                  : L"EDID_OVERRIDE (authoritative)";
+}
+
+// True when the cached EDID disagrees with the override about the VSDB. That
+// means the cache is stale and must not be allowed to veto anything.
+bool CacheDisagreesAboutVsdb(const Monitor& m) {
+    if (m.overrideEdid.empty() || m.edid.empty()) return false;
+    return edid::FindMicrosoftVsdb(m.edid).found !=
+           edid::FindMicrosoftVsdb(m.overrideEdid).found;
+}
 
 void Out(const wchar_t* fmt, ...) {
     va_list a;
@@ -211,6 +237,7 @@ std::vector<Monitor> EnumerateMonitors() {
                 ReadBinaryValue(dp, L"EDID", m.edid);
                 ::RegCloseKey(dp);
             }
+            ReadOverrideBlocks(m, kOverrideKey, m.overrideEdid);
             m.hasOverride = SubkeyExists(m, kOverrideKey);
             m.hasBackup = SubkeyExists(m, kBackupKey);
 
@@ -438,7 +465,13 @@ int CmdVerify(const Monitor& m) {
 int CmdSelfTest(const Monitor& m, uint8_t useCase) {
     Out(L"Self-test against the REAL EDID of %s\\%s (nothing is written)\n\n",
         m.hardwareId.c_str(), m.instanceId.c_str());
-    if (m.edid.empty()) {
+    const Bytes& source = SourceEdid(m);
+    Out(L"  source: %s (%zu bytes)\n", SourceEdidName(m), source.size());
+    if (CacheDisagreesAboutVsdb(m)) {
+        Out(L"  NOTE: the cached EDID and the override disagree about the VSDB - "
+            L"the cache is stale.\n");
+    }
+    if (source.empty()) {
         Out(L"  FAIL: no EDID to test with\n");
         return 1;
     }
@@ -449,20 +482,20 @@ int CmdSelfTest(const Monitor& m, uint8_t useCase) {
         if (!ok) ++failures;
     };
 
-    check(edid::HasValidHeader(m.edid), L"original EDID has a valid header");
-    check(edid::AllChecksumsOk(m.edid), L"original EDID checksums are all valid");
-    check(edid::DeclaredExtensionCount(m.edid) + 1u == edid::BlockCount(m.edid),
+    check(edid::HasValidHeader(source), L"original EDID has a valid header");
+    check(edid::AllChecksumsOk(source), L"original EDID checksums are all valid");
+    check(edid::DeclaredExtensionCount(source) + 1u == edid::BlockCount(source),
           L"original extension count matches the blocks present");
-    check(!edid::FindMicrosoftVsdb(m.edid).found,
+    check(!edid::FindMicrosoftVsdb(source).found,
           L"original EDID has no Microsoft VSDB");
 
-    const edid::CtaBlockInfo cta = edid::FindFirstCtaBlock(m.edid);
+    const edid::CtaBlockInfo cta = edid::FindFirstCtaBlock(source);
     check(cta.found, L"original EDID contains a CTA-861 extension block");
     std::vector<Bytes> db, dtd;
     if (cta.found) {
-        check(edid::ExtractCtaDataBlocks(m.edid, cta, db),
+        check(edid::ExtractCtaDataBlocks(source, cta, db),
               L"original CTA data block collection parses cleanly");
-        edid::ExtractCtaDtds(m.edid, cta, dtd);
+        edid::ExtractCtaDtds(source, cta, dtd);
         Out(L"        (%zu data block(s), %zu DTD(s), %zu free byte(s) in the CTA block)\n",
             db.size(), dtd.size(), cta.freeBytes);
     }
@@ -480,16 +513,16 @@ int CmdSelfTest(const Monitor& m, uint8_t useCase) {
     check(vsdb[4] == 0x03, L"VSDB version byte is 0x03");
     check((vsdb[5] & 0x40) == 0, L"VSDB desktop-usage bit (bit 6) is CLEAR");
 
-    const edid::PatchResult pr = edid::AddMicrosoftVsdb(m.edid, opts);
+    const edid::PatchResult pr = edid::AddMicrosoftVsdb(source, opts);
     if (!pr.ok) {
         Out(L"  FAIL  patch failed: %S\n", pr.error.c_str());
         return 1;
     }
     Out(L"  pass  patch succeeded using strategy: %S\n", edid::StrategyName(pr.strategy));
-    Out(L"        %zu bytes -> %zu bytes\n", m.edid.size(), pr.output.size());
+    Out(L"        %zu bytes -> %zu bytes\n", source.size(), pr.output.size());
 
     const edid::RoundTripReport rep =
-        edid::VerifyRoundTrip(m.edid, pr.output, pr.strategy);
+        edid::VerifyRoundTrip(source, pr.output, pr.strategy);
     if (!rep.ok) {
         Out(L"  FAIL  round-trip: %S\n", rep.error.c_str());
         ++failures;
@@ -512,9 +545,146 @@ int CmdSelfTest(const Monitor& m, uint8_t useCase) {
     check(!again.ok, L"re-patching an already-patched EDID is refused");
 
     // Determinism: the same input must produce byte-identical output.
-    const edid::PatchResult repeat = edid::AddMicrosoftVsdb(m.edid, opts);
+    const edid::PatchResult repeat = edid::AddMicrosoftVsdb(source, opts);
     check(repeat.ok && repeat.output == pr.output,
           L"patching is deterministic (identical bytes on a second run)");
+
+    // --- synthetic EDIDs: structures the real monitor cannot exercise ---
+    Out(L"\n  -- synthetic EDID structures --\n");
+    {
+        // Minimal but valid base block: header, EDID 1.4, no extensions.
+        auto MakeBase = [](uint8_t extCount) {
+            Bytes b(edid::kBlockSize, 0);
+            const uint8_t hdr[8] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+            for (size_t i = 0; i < 8; ++i) b[i] = hdr[i];
+            b[18] = 1;
+            b[19] = 4;
+            b[126] = extCount;
+            edid::FixBlockChecksum(b.data());
+            return b;
+        };
+        // A CTA block with 'dataBytes' of filler data blocks and 'dtds' DTDs.
+        auto MakeCta = [](size_t fillerBytes, size_t dtds) {
+            Bytes b(edid::kBlockSize, 0);
+            b[0] = 0x02;
+            b[1] = 0x03;
+            size_t p = 4;
+            if (fillerBytes >= 1) {
+                // One vendor-specific block of the requested size.
+                const size_t len = fillerBytes - 1;
+                b[p] = static_cast<uint8_t>((3u << 5) | (len & 0x1F));
+                b[p + 1] = 0x11;
+                b[p + 2] = 0x22;
+                b[p + 3] = 0x33;
+                p += fillerBytes;
+            }
+            b[2] = static_cast<uint8_t>(p);
+            for (size_t d = 0; d < dtds; ++d) {
+                const size_t off = p + d * 18;
+                if (off + 18 > 127) break;
+                b[off] = 0x01;      // non-zero pixel clock => a real DTD
+                b[off + 1] = 0x01;
+            }
+            edid::FixBlockChecksum(b.data());
+            return b;
+        };
+        auto MakeBlockMap = [](const std::vector<uint8_t>& laterTags) {
+            Bytes b(edid::kBlockSize, 0);
+            b[0] = edid::kExtTagBlockMap;
+            for (size_t i = 0; i < laterTags.size() && i < 126; ++i) {
+                b[1 + i] = laterTags[i];
+            }
+            edid::FixBlockChecksum(b.data());
+            return b;
+        };
+        auto Concat = [](std::initializer_list<Bytes> parts) {
+            Bytes out;
+            for (const Bytes& p2 : parts) out.insert(out.end(), p2.begin(), p2.end());
+            return out;
+        };
+
+        edid::VsdbOptions o;
+        o.containerId = edid::DeriveContainerId("synthetic");
+
+        // 1. Base + one roomy CTA block -> must INSERT, not append.
+        {
+            Bytes e = Concat({ MakeBase(1), MakeCta(8, 1) });
+            const edid::PatchResult r = edid::AddMicrosoftVsdb(e, o);
+            check(r.ok && r.strategy == edid::PatchStrategy::InsertIntoExistingCta,
+                  L"roomy CTA block is patched in place, not appended");
+            if (r.ok) {
+                check(r.output.size() == e.size(),
+                      L"in-place insert does not change the EDID length");
+                check(edid::VerifyRoundTrip(e, r.output, r.strategy).ok,
+                      L"in-place insert passes the round-trip check");
+                const edid::VsdbLocation v = edid::FindMicrosoftVsdb(r.output);
+                check(v.found && v.offset / edid::kBlockSize == 1,
+                      L"in-place insert puts the VSDB in the FIRST CTA extension");
+            }
+        }
+
+        // 2. CTA block with no room -> must append.
+        {
+            Bytes e = Concat({ MakeBase(1), MakeCta(8, 6) });
+            const edid::PatchResult r = edid::AddMicrosoftVsdb(e, o);
+            check(r.ok && r.strategy == edid::PatchStrategy::AppendNewCtaBlock,
+                  L"a full CTA block forces the append strategy");
+            if (r.ok) {
+                check(edid::VerifyRoundTrip(e, r.output, r.strategy).ok,
+                      L"append passes the round-trip check");
+            }
+        }
+
+        // 3. THE BLOCK MAP CASE: base + block map + 2 real extensions.
+        //    Appending must rewrite the map, or the new block is invisible.
+        {
+            Bytes e = Concat({ MakeBase(3), MakeBlockMap({ 0x02, 0x02 }),
+                               MakeCta(8, 6), MakeCta(0, 0) });
+            check(edid::HasBlockMap(e), L"synthetic EDID has a block map at block 1");
+            check(edid::BlockMapIsConsistent(e),
+                  L"synthetic block map starts out consistent");
+
+            const edid::PatchResult r = edid::AddMicrosoftVsdb(e, o);
+            check(r.ok, L"block-map EDID can be patched");
+            if (r.ok) {
+                check(r.strategy == edid::PatchStrategy::AppendNewCtaBlock,
+                      L"block-map EDID takes the append path");
+                check(edid::BlockMapIsConsistent(r.output),
+                      L"the block map is REWRITTEN to describe the appended block");
+                const size_t newBlock = edid::BlockCount(r.output) - 1;
+                check(r.output[edid::kBlockSize + newBlock - 1] == 0x02,
+                      L"the block map's entry for the new block records tag 0x02");
+                check(edid::AllChecksumsOk(r.output),
+                      L"every checksum is still valid after the map rewrite");
+                check(edid::VerifyRoundTrip(e, r.output, r.strategy).ok,
+                      L"block-map append passes the round-trip check");
+            }
+        }
+
+        // 4. A deliberately inconsistent map must be caught, not ignored.
+        {
+            Bytes e = Concat({ MakeBase(3), MakeBlockMap({ 0x02, 0x02 }),
+                               MakeCta(8, 6), MakeCta(0, 0) });
+            e[edid::kBlockSize + 2] = 0x99;        // lie about block 3's tag
+            edid::FixBlockChecksum(e.data() + edid::kBlockSize);
+            check(!edid::BlockMapIsConsistent(e),
+                  L"an inconsistent block map is detected");
+        }
+
+        // 5. Multi-CTA: the finder must locate a VSDB in a LATER CTA block too.
+        {
+            Bytes e = Concat({ MakeBase(2), MakeCta(8, 6), MakeCta(8, 6) });
+            const edid::PatchResult r = edid::AddMicrosoftVsdb(e, o);
+            check(r.ok && edid::FindMicrosoftVsdb(r.output).found,
+                  L"a VSDB in a second CTA extension is still findable by the parser");
+            if (r.ok) {
+                const size_t blk = edid::FindMicrosoftVsdb(r.output).offset /
+                                   edid::kBlockSize;
+                check(blk != edid::FindFirstCtaBlock(r.output).blockIndex,
+                      L"...and it is correctly reported as NOT the first CTA block");
+            }
+        }
+    }
 
     // --- guard event security ------------------------------------------
     Out(L"\n  -- guard event security --\n");
@@ -733,7 +903,15 @@ UndoResult UndoOverride(const Monitor& m) {
 }
 
 int CmdApply(const Monitor& m, uint8_t useCase, bool confirmed) {
-    if (m.edid.empty()) {
+    const Bytes& source = SourceEdid(m);
+    Out(L"  source EDID: %s, %zu bytes\n", SourceEdidName(m), source.size());
+    if (CacheDisagreesAboutVsdb(m)) {
+        Out(L"  NOTE: Device Parameters\\EDID (the cache) disagrees with "
+            L"EDID_OVERRIDE about the VSDB.\n"
+            L"        The cache is stale; using the override. It refreshes on the "
+            L"next devnode restart.\n");
+    }
+    if (source.empty()) {
         Out(L"  FAIL: no EDID recorded for this monitor\n");
         return 1;
     }
@@ -742,13 +920,15 @@ int CmdApply(const Monitor& m, uint8_t useCase, bool confirmed) {
     opts.containerId =
         edid::DeriveContainerId(ContainerSeed(m.hardwareId, m.instanceId));
 
-    const edid::PatchResult pr = edid::AddMicrosoftVsdb(m.edid, opts);
+    const edid::PatchResult pr = edid::AddMicrosoftVsdb(source, opts);
     if (!pr.ok) {
         Out(L"  cannot patch: %S\n", pr.error.c_str());
-        return 1;
+        return (pr.error.find("already present") != std::string::npos)
+                   ? guard::kExitAlreadyApplied
+                   : 1;
     }
     const edid::RoundTripReport rep =
-        edid::VerifyRoundTrip(m.edid, pr.output, pr.strategy);
+        edid::VerifyRoundTrip(source, pr.output, pr.strategy);
     if (!rep.ok) {
         Out(L"  REFUSING to write: round-trip check failed: %S\n", rep.error.c_str());
         return 1;
@@ -757,8 +937,15 @@ int CmdApply(const Monitor& m, uint8_t useCase, bool confirmed) {
     Out(L"Planned override for %s\\%s (%s)\n", m.hardwareId.c_str(),
         m.instanceId.c_str(), m.gdiName.empty() ? L"not attached" : m.gdiName.c_str());
     Out(L"  strategy   : %S\n", edid::StrategyName(pr.strategy));
-    Out(L"  size       : %zu -> %zu bytes (%zu -> %zu blocks)\n", m.edid.size(),
-        pr.output.size(), edid::BlockCount(m.edid), edid::BlockCount(pr.output));
+    Out(L"  size       : %zu -> %zu bytes (%zu -> %zu blocks)\n", source.size(),
+        pr.output.size(), edid::BlockCount(source), edid::BlockCount(pr.output));
+    Out(L"  VSDB lands in extension block %zu; first CTA extension is block %zu%s\n",
+        edid::FindMicrosoftVsdb(pr.output).offset / edid::kBlockSize,
+        edid::FindFirstCtaBlock(pr.output).blockIndex,
+        (edid::FindMicrosoftVsdb(pr.output).offset / edid::kBlockSize ==
+         edid::FindFirstCtaBlock(pr.output).blockIndex)
+            ? L""
+            : L"  <-- NOT the first CTA extension");
     Out(L"  writes to  : HKLM\\%s\\Device Parameters\\%s\n", m.regPath.c_str(),
         kOverrideKey);
     if (m.hasOverride) {
@@ -865,29 +1052,60 @@ int CmdGuardedApply(const Monitor& m, uint8_t useCase, bool confirmed, bool dryR
     }
 
     // --- step a: compute and write the override ---------------------------
-    if (m.edid.empty()) {
+    const Bytes& source = SourceEdid(m);
+    guard::Log(L"source EDID: %s, %zu bytes", SourceEdidName(m), source.size());
+    if (!m.overrideEdid.empty() && !m.edid.empty() &&
+        m.overrideEdid.size() != m.edid.size()) {
+        guard::Log(L"note: the cached EDID (%zu bytes) differs in size from the "
+                   L"override (%zu bytes) - the cache has not caught up yet",
+                   m.edid.size(), m.overrideEdid.size());
+    }
+    if (CacheDisagreesAboutVsdb(m)) {
+        // The classic wedge: a previous apply was reverted, the override no
+        // longer has the VSDB, but monitor.sys's cache still does. Say so and
+        // carry on from the override rather than refusing forever.
+        guard::Log(L"NOTE: stale state detected - Device Parameters\\EDID %s a "
+                   L"Microsoft VSDB but EDID_OVERRIDE %s. The cache is stale; "
+                   L"proceeding from the override. It refreshes on the next "
+                   L"devnode restart.",
+                   edid::FindMicrosoftVsdb(m.edid).found ? L"HAS" : L"does NOT have",
+                   edid::FindMicrosoftVsdb(m.overrideEdid).found ? L"has"
+                                                                 : L"does not");
+    }
+    if (source.empty()) {
         guard::Log(L"step a FAILED: no EDID recorded for this monitor");
         return finish(guard::kExitApplyFailedReverted);
+    }
+    if (edid::FindMicrosoftVsdb(source).found) {
+        guard::Log(L"nothing to do: the override already carries a Microsoft VSDB");
+        guard::Log(L"  (run `edidoverride guarded-revert` first if you want to "
+                   L"re-apply from scratch)");
+        return finish(guard::kExitAlreadyApplied);
     }
     edid::VsdbOptions opts;
     opts.primaryUseCase = useCase;
     opts.containerId =
         edid::DeriveContainerId(ContainerSeed(m.hardwareId, m.instanceId));
 
-    const edid::PatchResult pr = edid::AddMicrosoftVsdb(m.edid, opts);
+    const edid::PatchResult pr = edid::AddMicrosoftVsdb(source, opts);
     if (!pr.ok) {
         guard::Log(L"step a FAILED: %S", pr.error.c_str());
         return finish(guard::kExitApplyFailedReverted);
     }
     const edid::RoundTripReport rep =
-        edid::VerifyRoundTrip(m.edid, pr.output, pr.strategy);
+        edid::VerifyRoundTrip(source, pr.output, pr.strategy);
     if (!rep.ok) {
         guard::Log(L"step a FAILED: round-trip check rejected the patch: %S",
                    rep.error.c_str());
         return finish(guard::kExitApplyFailedReverted);
     }
     guard::Log(L"step a: patch computed - %S, %zu -> %zu bytes",
-               edid::StrategyName(pr.strategy), m.edid.size(), pr.output.size());
+               edid::StrategyName(pr.strategy), source.size(), pr.output.size());
+    guard::Log(L"step a: VSDB lands in extension block %zu of %zu; the FIRST CTA "
+               L"extension is block %zu",
+               edid::FindMicrosoftVsdb(pr.output).offset / edid::kBlockSize,
+               edid::BlockCount(pr.output) - 1,
+               edid::FindFirstCtaBlock(pr.output).blockIndex);
 
     if (dryRun) {
         guard::Log(L"step a: [dry run] would write %zu block(s) to "
@@ -1084,6 +1302,7 @@ void Usage() {
         L"   3   apply failed; any partial change was reverted\n"
         L"   4   devnode restart failed or the monitor did not return; reverted\n"
         L"   5   bad arguments\n"
+        L"   6   nothing to do - the override already carries the VSDB\n"
         L"  10   the user asked to revert; reverted, HidePhysicalDisplay=0\n"
         L"  11   the countdown expired; auto-reverted, HidePhysicalDisplay=0\n"
         L"\n"

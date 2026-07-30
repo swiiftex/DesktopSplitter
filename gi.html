@@ -1,0 +1,313 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+	<meta name="description" content="Vulkan GPU hardware database">	
+	<meta name="robots" content="index, nofollow">
+	<title>VK_KHR_display - Vulkan Hardware Database by Sascha Willems</title>	<link rel="icon" type="image/png" href="/images/Vulkan_LogoBug_32px_Nov17.png" sizes="32x32">
+	<link rel="stylesheet" type="text/css" href="external/css/bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/css/dataTables.bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/css/responsive.bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/bootstrap-toggle.min.css" rel="stylesheet">
+	<link rel="stylesheet" type="text/css" href="external/css/fixedHeader.bootstrap.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="external/fontawesome/css/fontawesome.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="external/fontawesome/css/solid.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="style.css?ver=3">
+	<script type="text/javascript" src="external/jquery-2.2.0.min.js"></script>
+	<script type="text/javascript" src="external/bootstrap.min.js"></script>
+	<script type="text/javascript" src="external/jquery.dataTables.min.js"></script>
+	<script type="text/javascript" src="external/jquery.dataTables.yadcf.js"></script>
+	<script type="text/javascript" src="external/dataTables.bootstrap.min.js"></script>
+	<script type="text/javascript" src="external/bootstrap-toggle.min.js"></script>
+	<script type="text/javascript" src="external/dataTables.fixedHeader.min.js"></script>
+	<script src="external/apexcharts/apexcharts.js"></script>
+	<script type="text/javascript" src="external/responsive.bootstrap.min.js"></script>
+	<script>
+		$(document).ready(function() {
+			$.each($('#navbar').find('li'), function() {
+				$(this).toggleClass('active',
+					'/' + $(this).find('a').attr('href') == window.location.pathname);
+			});
+		});
+		$(window).resize(function() {
+			$('body').css('padding-top', parseInt($('#main-navbar').css("height")));
+		});
+		$(window).load(function() {
+			$('body').css('padding-top', parseInt($('#main-navbar').css("height")));
+		});
+	</script>
+	<!-- Matomo -->
+	<script>
+	var _paq = window._paq = window._paq || [];
+	/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+	_paq.push(['trackPageView']);
+	_paq.push(['enableLinkTracking']);
+	(function() {
+		var u="https://gpuinfo.org/matomo/";
+		_paq.push(['setTrackerUrl', u+'matomo.php']);
+		_paq.push(['setSiteId', '1']);
+		var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+		g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+	})();
+	</script>
+	<!-- End Matomo Code -->
+</head>
+<body>
+	<nav class="navbar navbar-default navbar-fixed-top" id="main-navbar">
+		<div class="container-fluid">
+			<div class="navbar-header">
+				<button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#myNavbar">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</button>
+				<a href="./listdevices.php">
+					<img src="./images/vulkan48.png" class="vulkanlogo">
+				</a>
+			</div>
+			<div class="collapse navbar-collapse" id="myNavbar">
+				<ul class="nav navbar-nav">
+					<li><a href="listdevices.php">Devices</a></li>
+					<li><a href="listreports.php">Reports</a></li>
+					<li><a href="listextensions.php">Extensions</a></li>
+					<li><a href="displaycoreproperty.php?name=apiversion">Versions</a></li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Properties<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listpropertiescore10.php">Core 1.0</a></li>
+							<li><a href="listpropertiescore11.php">Core 1.1</a></li>
+							<li><a href="listpropertiescore12.php">Core 1.2</a></li>
+							<li><a href="listpropertiescore13.php">Core 1.3</a></li>
+							<li><a href="listpropertiescore14.php">Core 1.4</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="listpropertiesextensions.php">Extensions</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Features<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listfeaturescore10.php">Core 1.0</a></li>
+							<li><a href="listfeaturescore11.php">Core 1.1</a></li>
+							<li><a href="listfeaturescore12.php">Core 1.2</a></li>
+							<li><a href="listfeaturescore13.php">Core 1.3</a></li>
+							<li><a href="listfeaturescore14.php">Core 1.4</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="listfeaturesextensions.php">Extensions</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Formats
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listlineartilingformats.php">Linear tiling</a></li>
+							<li><a href="listoptimaltilingformats.php">Optimal tiling</a></li>
+							<li><a href="listbufferformats.php">Buffer</a></li>
+						</ul>
+					</li>
+					<li><a href="listmemory.php">Memory</a></li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Surface
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listsurfaceformats.php">Formats</a></li>
+							<li><a href="listsurfacepresentmodes.php">Present modes</a></li>
+							<li><a href="listsurfaceusageflags.php">Usage flags</a></li>
+							<li><a href="listsurfacetransformmodes.php">Transform modes</a></li>
+							<li><a href="listsurfacecompositealphamodes.php">Composite alpha modes</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Instance
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listinstanceextensions.php">Extensions</a></li>
+							<li><a href="listinstancelayers.php">Layers</a></li>
+						</ul>
+					</li>
+					<li><a href="listprofiles.php">Profiles</a></li>
+					<li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
+					<li><a href="download.php"><i class="fas fa-download"> </i> Download</a></li>
+					<li><a href="about.php"><i class="fas fa-question-circle"></i> About</a></li>
+				</ul>
+				<ul class="nav navbar-nav navbar-right">
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">gpuinfo.org
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="https://opengl.gpuinfo.org">OpenGL</a></li>
+							<li><a href="https://opengles.gpuinfo.org">OpenGL ES</a></li>
+							<li><a href="https://opencl.gpuinfo.org">OpenCL</a></li>
+							<li><a href="https://vulkan.gpuinfo.org">Vulkan</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="https://android.gpuinfo.org">Android</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="https://www.gpuinfo.org">Launchpad</a></li>
+						</ul>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</nav>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+	<meta name="description" content="Vulkan GPU hardware database">	
+	<meta name="robots" content="index, nofollow">
+	<title> - Vulkan Hardware Database by Sascha Willems</title>	<link rel="icon" type="image/png" href="/images/Vulkan_LogoBug_32px_Nov17.png" sizes="32x32">
+	<link rel="stylesheet" type="text/css" href="external/css/bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/css/dataTables.bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/css/responsive.bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="external/bootstrap-toggle.min.css" rel="stylesheet">
+	<link rel="stylesheet" type="text/css" href="external/css/fixedHeader.bootstrap.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="external/fontawesome/css/fontawesome.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="external/fontawesome/css/solid.min.css" rel="stylesheet" />
+	<link rel="stylesheet" type="text/css" href="style.css?ver=3">
+	<script type="text/javascript" src="external/jquery-2.2.0.min.js"></script>
+	<script type="text/javascript" src="external/bootstrap.min.js"></script>
+	<script type="text/javascript" src="external/jquery.dataTables.min.js"></script>
+	<script type="text/javascript" src="external/jquery.dataTables.yadcf.js"></script>
+	<script type="text/javascript" src="external/dataTables.bootstrap.min.js"></script>
+	<script type="text/javascript" src="external/bootstrap-toggle.min.js"></script>
+	<script type="text/javascript" src="external/dataTables.fixedHeader.min.js"></script>
+	<script src="external/apexcharts/apexcharts.js"></script>
+	<script type="text/javascript" src="external/responsive.bootstrap.min.js"></script>
+	<script>
+		$(document).ready(function() {
+			$.each($('#navbar').find('li'), function() {
+				$(this).toggleClass('active',
+					'/' + $(this).find('a').attr('href') == window.location.pathname);
+			});
+		});
+		$(window).resize(function() {
+			$('body').css('padding-top', parseInt($('#main-navbar').css("height")));
+		});
+		$(window).load(function() {
+			$('body').css('padding-top', parseInt($('#main-navbar').css("height")));
+		});
+	</script>
+	<!-- Matomo -->
+	<script>
+	var _paq = window._paq = window._paq || [];
+	/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+	_paq.push(['trackPageView']);
+	_paq.push(['enableLinkTracking']);
+	(function() {
+		var u="https://gpuinfo.org/matomo/";
+		_paq.push(['setTrackerUrl', u+'matomo.php']);
+		_paq.push(['setSiteId', '1']);
+		var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+		g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+	})();
+	</script>
+	<!-- End Matomo Code -->
+</head>
+<body>
+	<nav class="navbar navbar-default navbar-fixed-top" id="main-navbar">
+		<div class="container-fluid">
+			<div class="navbar-header">
+				<button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#myNavbar">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</button>
+				<a href="./listdevices.php">
+					<img src="./images/vulkan48.png" class="vulkanlogo">
+				</a>
+			</div>
+			<div class="collapse navbar-collapse" id="myNavbar">
+				<ul class="nav navbar-nav">
+					<li><a href="listdevices.php">Devices</a></li>
+					<li><a href="listreports.php">Reports</a></li>
+					<li><a href="listextensions.php">Extensions</a></li>
+					<li><a href="displaycoreproperty.php?name=apiversion">Versions</a></li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Properties<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listpropertiescore10.php">Core 1.0</a></li>
+							<li><a href="listpropertiescore11.php">Core 1.1</a></li>
+							<li><a href="listpropertiescore12.php">Core 1.2</a></li>
+							<li><a href="listpropertiescore13.php">Core 1.3</a></li>
+							<li><a href="listpropertiescore14.php">Core 1.4</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="listpropertiesextensions.php">Extensions</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Features<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listfeaturescore10.php">Core 1.0</a></li>
+							<li><a href="listfeaturescore11.php">Core 1.1</a></li>
+							<li><a href="listfeaturescore12.php">Core 1.2</a></li>
+							<li><a href="listfeaturescore13.php">Core 1.3</a></li>
+							<li><a href="listfeaturescore14.php">Core 1.4</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="listfeaturesextensions.php">Extensions</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Formats
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listlineartilingformats.php">Linear tiling</a></li>
+							<li><a href="listoptimaltilingformats.php">Optimal tiling</a></li>
+							<li><a href="listbufferformats.php">Buffer</a></li>
+						</ul>
+					</li>
+					<li><a href="listmemory.php">Memory</a></li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Surface
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listsurfaceformats.php">Formats</a></li>
+							<li><a href="listsurfacepresentmodes.php">Present modes</a></li>
+							<li><a href="listsurfaceusageflags.php">Usage flags</a></li>
+							<li><a href="listsurfacetransformmodes.php">Transform modes</a></li>
+							<li><a href="listsurfacecompositealphamodes.php">Composite alpha modes</a></li>
+						</ul>
+					</li>
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">Instance
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="listinstanceextensions.php">Extensions</a></li>
+							<li><a href="listinstancelayers.php">Layers</a></li>
+						</ul>
+					</li>
+					<li><a href="listprofiles.php">Profiles</a></li>
+					<li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
+					<li><a href="download.php"><i class="fas fa-download"> </i> Download</a></li>
+					<li><a href="about.php"><i class="fas fa-question-circle"></i> About</a></li>
+				</ul>
+				<ul class="nav navbar-nav navbar-right">
+					<li class="dropdown">
+						<a class="dropdown-toggle" data-toggle="dropdown" href="#">gpuinfo.org
+							<span class="caret"></span></a>
+						<ul class="dropdown-menu">
+							<li><a href="https://opengl.gpuinfo.org">OpenGL</a></li>
+							<li><a href="https://opengles.gpuinfo.org">OpenGL ES</a></li>
+							<li><a href="https://opencl.gpuinfo.org">OpenCL</a></li>
+							<li><a href="https://vulkan.gpuinfo.org">Vulkan</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="https://android.gpuinfo.org">Android</a></li>
+							<li role="separator" class="divider"></li>
+							<li><a href="https://www.gpuinfo.org">Launchpad</a></li>
+						</ul>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</nav>
+			<div class="div-h-center">
+				<div class="div-alert alert alert-danger error">
+					This is not the <strike>droid</strike> extension you are looking for!</strong><br><br>You may have passed a wrong extension name.				</div>
+			</div>
+
+<center>
+	<p style="margin-top:30px;">
+		<font color="#B0B0B0" size="1">
+			Vulkan Hardware Database - &copy; 2016-2026 by <a href="https://www.saschawillems.de/" target="blank">Sascha Willems</a><br>
+			<a href="https://www.khronos.org/vulkan/">Vulkan</a> and the Vulkan logo are trademarks of the <a href="https://www.khronos.org">Khronos Group Inc</a>.<br>
+			<a href="https://www.gpuinfo.org/privacypolicy">Privacy policy</a><br><br>
+			The data presented is licensed under the <a rel="license" href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.<br />
+		</font>
+	</p>
+</center><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a2230598d854b140',t:'MTc4NTIzMjY2OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>

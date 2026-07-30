@@ -14,6 +14,20 @@ public sealed class CompositorConfig
     [JsonPropertyName("refreshMillihertz")]
     public uint RefreshMillihertz { get; set; }
 
+    /// <summary>
+    /// 0-based index of the segment promoted to Windows' primary display. Informational for the
+    /// compositor; the app performs the promotion. Absent/negative means segment 0.
+    /// </summary>
+    [JsonPropertyName("primarySegment")]
+    public int PrimarySegment { get; set; }
+
+    /// <summary>
+    /// 0-based index of the segment new application windows should open on, or -1 for off.
+    /// Lets a side segment hold the full taskbar while apps still launch on the centre one.
+    /// </summary>
+    [JsonPropertyName("launchSegment")]
+    public int LaunchSegment { get; set; } = -1;
+
     [JsonPropertyName("segments")]
     public List<CompositorSegment> Segments { get; set; } = new();
 }
@@ -31,6 +45,13 @@ public sealed class CompositorSegment
 
     [JsonPropertyName("physRect")]
     public CompositorRect PhysRect { get; set; } = new();
+
+    /// <summary>
+    /// Whether Windows' taskbar should appear on this segment. Backward compatible: an absent
+    /// value means true, matching the behaviour before this field existed.
+    /// </summary>
+    [JsonPropertyName("showTaskbar")]
+    public bool ShowTaskbar { get; set; } = true;
 }
 
 public sealed class CompositorRect

@@ -2,13 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- Spec target is .NET 8. Built here with the .NET 10 SDK against the installed
+    <!-- Spec target. Built here with the .NET 10 SDK against the installed
          .NET 8 targeting pack / desktop runtime (no 8.x SDK on this machine).
-         The 10.0.19041.0 platform suffix pulls in the Windows SDK projection so we can read
-         Windows.Devices.Display.DisplayMonitor.UsageKind for the display-hiding panel.
-         NOTE: this changes the output folder to bin\<Config>\net8.0-windows10.0.19041.0\. -->
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+         (The WinRT platform suffix that the retired EDID-override panel needed for
+         DisplayMonitor.UsageKind is gone: UsageKind is an unreliable success signal, and
+         monitor specialization is read through plain DisplayConfig instead.) -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>AnyCPU;x64</Platforms>
@@ -34,6 +33,14 @@
          WPF app that only borrows NotifyIcon, so PerMonitorV2 belongs in app.manifest. -->
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- tools\ holds standalone diagnostic programs (separate projects). They must never be
+         compiled into the shipping app. -->
+    <Compile Remove="tools\**" />
+    <None Remove="tools\**" />
+    <Page Remove="tools\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- UseWindowsForms injects global usings for System.Windows.Forms/System.Drawing which

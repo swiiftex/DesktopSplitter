@@ -52,6 +52,15 @@ public sealed class MonitorInfo
     /// <summary>Numeric suffix of the GDI device name (the n in <c>\\.\DISPLAYn</c>).</summary>
     public int Index { get; init; }
 
+    /// <summary>Low part of the DisplayConfig adapter LUID for this target.</summary>
+    public uint AdapterIdLow { get; init; }
+
+    /// <summary>High part of the DisplayConfig adapter LUID for this target.</summary>
+    public int AdapterIdHigh { get; init; }
+
+    /// <summary>DisplayConfig target id — with the adapter LUID this addresses the monitor.</summary>
+    public uint TargetId { get; init; }
+
     public bool IsPrimary { get; init; }
 
     /// <summary>True when this target belongs to the DesktopSplitter virtual driver.</summary>
