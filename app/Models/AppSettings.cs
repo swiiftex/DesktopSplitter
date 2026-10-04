@@ -18,26 +18,6 @@ public sealed class AppSettings
     public List<SegmentSize> Segments { get; set; } = new();
 
     /// <summary>
-    /// 0-based segment promoted to Windows' primary display — where the taskbar, Start menu,
-    /// Alt-Tab and the system tray live. Defaults to segment 0.
-    /// </summary>
-    [JsonPropertyName("primarySegment")]
-    public int PrimarySegment { get; set; }
-
-    /// <summary>
-    /// 0-based segment new application windows should open on, or -1 for off (Windows decides).
-    /// </summary>
-    [JsonPropertyName("launchSegment")]
-    public int LaunchSegment { get; set; } = -1;
-
-    /// <summary>
-    /// The user's "show my taskbar on all displays" value from before we changed it, so Revert can
-    /// put it back. Null means we never changed it.
-    /// </summary>
-    [JsonPropertyName("previousMultiMonitorTaskbar")]
-    public int? PreviousMultiMonitorTaskbar { get; set; }
-
-    /// <summary>
     /// The GDI device name (<c>\\.\DISPLAYn</c>) that was Windows' primary display immediately
     /// BEFORE the last Apply. Revert restores primary to this monitor, which is not necessarily
     /// the monitor that got split — on a multi-monitor desk the user may have been splitting a
@@ -114,7 +94,4 @@ public sealed class SegmentSize
 {
     [JsonPropertyName("width")] public int Width { get; set; }
     [JsonPropertyName("height")] public int Height { get; set; }
-
-    /// <summary>Show Windows' taskbar on this segment. Absent means true (previous behaviour).</summary>
-    [JsonPropertyName("showTaskbar")] public bool ShowTaskbar { get; set; } = true;
 }

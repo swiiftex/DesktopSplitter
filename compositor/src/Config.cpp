@@ -62,8 +62,6 @@ bool LoadConfig(const std::wstring& path, AppConfig& out) {
     out = AppConfig();
     out.physicalDevice = Utf8ToWide(root.stringMember("physicalDevice"));
     out.refreshMillihertz = root.uintMember("refreshMillihertz", 60000);
-    out.primarySegment = root.uintMember("primarySegment", 0);
-    out.launchSegment = root.intMember("launchSegment", -1);
     if (out.refreshMillihertz < 1000) out.refreshMillihertz = 60000;
 
     if (out.physicalDevice.empty()) {
@@ -85,9 +83,6 @@ bool LoadConfig(const std::wstring& path, AppConfig& out) {
         }
         SegmentConfig sc;
         sc.virtualDevice = Utf8ToWide(s.stringMember("virtualDevice"));
-        // Absent means "show" - never hide a taskbar because a key was missing.
-        const json::Value* st = s.find("showTaskbar");
-        sc.showTaskbar = (st && st->isBool()) ? st->asBool(true) : true;
         sc.width  = s.uintMember("width", 0);
         sc.height = s.uintMember("height", 0);
 
@@ -116,11 +111,9 @@ bool LoadConfig(const std::wstring& path, AppConfig& out) {
            out.physicalDevice.c_str(), out.refreshMillihertz, out.segments.size());
     for (size_t i = 0; i < out.segments.size(); ++i) {
         const SegmentConfig& s = out.segments[i];
-        DS_VERB(L"  segment %zu: %s %ux%u -> physRect(%d,%d,%d,%d) taskbar=%s%s",
-                i, s.virtualDevice.c_str(), s.width, s.height, s.physRect.x,
-                s.physRect.y, s.physRect.w, s.physRect.h,
-                s.showTaskbar ? L"show" : L"HIDE",
-                (i == out.primarySegment) ? L" (primary)" : L"");
+        DS_VERB(L"  segment %zu: %s %ux%u -> physRect(%d,%d,%d,%d)", i,
+                s.virtualDevice.c_str(), s.width, s.height,
+                s.physRect.x, s.physRect.y, s.physRect.w, s.physRect.h);
     }
     return true;
 }

@@ -186,14 +186,6 @@ public partial class MainWindow : Window, IHidingUi
     private void Splitter_LostMouseCapture(object sender, MouseEventArgs e)
         => _viewModel.EndSplitterDrag();
 
-    /// <summary>Clicking a zone on the canvas selects it and shows its properties.</summary>
-    private void Zone_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not Border border || border.Tag is not int index) return;
-        _viewModel.SelectSegment(index);
-        e.Handled = true;
-    }
-
     // ------------------------------------------------------------------ window lifetime
 
     private void HideToTray()

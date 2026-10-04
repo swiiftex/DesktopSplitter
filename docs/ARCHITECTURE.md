@@ -99,36 +99,16 @@ duplication API at its true position.
 {
   "physicalDevice": "\\\\.\\DISPLAY1",
   "refreshMillihertz": 164999,
-  "primarySegment": 0,
-  "launchSegment": -1,
   "segments": [
     { "virtualDevice": "\\\\.\\DISPLAY3", "width": 1280, "height": 1440,
-      "physRect": { "x": 0, "y": 0, "w": 1280, "h": 1440 }, "showTaskbar": true },
+      "physRect": { "x": 0, "y": 0, "w": 1280, "h": 1440 } },
     { "virtualDevice": "\\\\.\\DISPLAY4", "width": 1280, "height": 1440,
-      "physRect": { "x": 1280, "y": 0, "w": 1280, "h": 1440 }, "showTaskbar": false }
+      "physRect": { "x": 1280, "y": 0, "w": 1280, "h": 1440 } }
   ]
 }
 ```
 `physRect` is in physical-monitor-local pixels. The compositor maps each
 virtual monitor's captured frames into its physRect.
-
-`primarySegment` (0-based) is the segment the control app promotes to Windows'
-primary display — where the taskbar, Start menu, Alt-Tab and the system tray
-go. The app performs the promotion; the field is informational for the
-compositor. Absent means 0.
-
-`launchSegment` (0-based, or `-1` for off) is the segment new application
-windows should be steered to. This exists so a *side* segment can hold the
-primary display — and therefore the full taskbar, system tray and notification
-centre — while apps and games still open on the centre segment.
-
-`showTaskbar` per segment (absent means `true`, for backward compatibility)
-asks for Windows' taskbar on that segment. Note the measured Windows 11 (build
-26200) behaviour: a **non-primary** taskbar shows app buttons and a clock, but
-**not** the system tray icons and **not** the notification centre — those are
-anchored to the primary display. Taskbars on non-primary displays additionally
-require `HKCU\...\Explorer\Advanced\MMTaskbarEnabled = 1`, which Explorer only
-reads at startup, so it needs a sign-out to take effect.
 
 ## Implementation notes (deviations from the original plan, both intentional)
 

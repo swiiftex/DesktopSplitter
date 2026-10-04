@@ -99,7 +99,6 @@
     <ClCompile Include="src\MonitorUtil.cpp" />
     <ClCompile Include="src\Renderer.cpp" />
     <ClCompile Include="src\SessionWatcher.cpp" />
-    <ClCompile Include="src\TaskbarControl.cpp" />
     <ClCompile Include="src\SpecializedPresenter.cpp" />
     <ClCompile Include="src\WindowPresenter.cpp" />
     <ClCompile Include="src\WindowRescuer.cpp" />
@@ -117,7 +116,6 @@
     <ClInclude Include="src\PresenterSelect.h" />
     <ClInclude Include="src\Renderer.h" />
     <ClInclude Include="src\SessionWatcher.h" />
-    <ClInclude Include="src\TaskbarControl.h" />
     <ClInclude Include="src\SpecializedPresenter.h" />
     <ClInclude Include="src\WindowPresenter.h" />
     <ClInclude Include="src\SegmentShared.h" />

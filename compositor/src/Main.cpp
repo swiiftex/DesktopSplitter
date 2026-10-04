@@ -18,7 +18,6 @@
 #include "CursorConfine.h"
 #include "WindowRescuer.h"
 #include "SessionWatcher.h"
-#include "TaskbarControl.h"
 #include "SegmentShared.h"
 
 #include <shellapi.h>
@@ -43,7 +42,6 @@ struct Options {
     int          waitForTarget = 0;   // --wait-for-target <seconds>, 0 = off
     int          frameDeadline = 20;  // --frame-deadline <seconds>
     bool         testPattern = false; // --test-pattern
-    bool         taskbarControl = true; // --no-taskbar-control
     bool         lowestMode = false;  // --lowest-mode
     uint32_t     modeWidth = 0;       // --mode WxH@Hz
     uint32_t     modeHeight = 0;
@@ -78,7 +76,6 @@ struct App {
     std::vector<std::unique_ptr<SegmentCapture>> captures;
     CursorConfiner                               confiner;
     SessionWatcher                               session;
-    TaskbarControl                               taskbars;
     bool                                         specialized = false;
     WindowRescuer                                rescuer;
 
@@ -128,7 +125,6 @@ void OnDisplayChange(App& app) {
     // every cached rect (including negative-coordinate ones) has to be redone.
     if (app.opt.confine) app.confiner.Refresh();
     if (app.opt.rescue) app.rescuer.OnDisplayChange();
-    app.taskbars.Enforce();
 }
 
 // Hide the compositor so the physical monitor shows whatever Windows is
@@ -140,9 +136,6 @@ void OnSuspendStateChanged(void* context, bool suspended, SuspendReason why) {
 
     if (suspended) {
         if (app->opt.confine) app->confiner.Release();
-        // Nothing of ours is on screen while suspended, so put every taskbar
-        // back; Enforce() re-hides them on resume.
-        app->taskbars.RestoreAll();
         if (!app->specialized) ::ShowWindow(app->hwnd, SW_HIDE);
         DS_LOG(L"suspend: compositor hidden, cursor clip released (%s)",
                SuspendReasonName(why));
@@ -155,7 +148,6 @@ void OnSuspendStateChanged(void* context, bool suspended, SuspendReason why) {
             app->confiner.Configure(app->config.physicalDevice);
             app->confiner.InstallHook();
         }
-        app->taskbars.Enforce();
         DS_LOG(L"resume: compositor shown, cursor confinement re-armed");
     }
 }
@@ -191,7 +183,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // reliable; this catches anything the hook missed.
             app->session.PollInputDesktop();
             if (app->session.IsSuspended()) return 0;   // stay out of the way
-            app->taskbars.Enforce();
             if (app->opt.confine) app->confiner.Reapply();
             ::SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -208,15 +199,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
 
     default:
-        // TaskbarCreated is a registered broadcast, so its id is not a
-        // compile-time constant and cannot be a case label. Explorer sends it
-        // after recreating its taskbars, which is exactly when our hiding has
-        // just been undone.
-        if (app && app->taskbars.IsTaskbarCreatedMessage(msg)) {
-            DS_LOG(L"taskbar: Explorer recreated its taskbars - re-applying");
-            app->taskbars.Enforce();
-            return 0;
-        }
         break;
     }
     return ::DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -334,9 +316,6 @@ void PrintUsage() {
                L"                   largest. Diagnostic: distinguishes a bandwidth/DSC\n"
                L"                   problem from an API-usage problem.\n"
                L"  --mode WxH@Hz    Select an explicit mode, e.g. 1920x1080@60.\n"
-               L"  --no-taskbar-control\n"
-               L"                   Do not enforce per-segment taskbar visibility;\n"
-               L"                   leave every taskbar exactly as Windows put it.\n"
                L"  --test-pattern   Draw a cycling solid colour instead of the captured\n"
                L"                   segments, with NO capture threads. Proves the\n"
                L"                   presentation path in isolation. Use this FIRST when\n"
@@ -456,31 +435,14 @@ int Run(HINSTANCE hinst, const Options& opt) {
 
     if (app.opt.rescue && !specializedActive) {
         // Segment 1 is the relocation target: config segments[0].
-        // launchSegment is optional and independent of which segment is
-        // primary; out-of-range values disable it rather than guessing.
-        std::wstring launchDevice;
-        const int ls = app.config.launchSegment;
-        if (ls >= 0 && static_cast<size_t>(ls) < app.config.segments.size()) {
-            launchDevice = app.config.segments[static_cast<size_t>(ls)].virtualDevice;
-            DS_LOG(L"new app windows will open on segment %d (%s)", ls,
-                   launchDevice.c_str());
-        } else if (ls >= 0) {
-            DS_WARN(L"launchSegment %d is out of range (%zu segment(s)) - ignoring",
-                    ls, app.config.segments.size());
-        }
         app.rescuer.Start(app.config.physicalDevice,
-                          app.config.segments[0].virtualDevice, launchDevice);
+                          app.config.segments[0].virtualDevice);
     } else if (!specializedActive) {
         DS_LOG(L"window rescuer disabled (--no-rescue)");
     }
 
     app.renderer.SetTestPattern(opt.testPattern);
     app.specialized = specializedActive;
-    if (opt.taskbarControl && !specializedActive) {
-        app.taskbars.Start(app.hwnd, app.config);
-    } else if (!opt.taskbarControl) {
-        DS_LOG(L"taskbar control disabled (--no-taskbar-control)");
-    }
     app.session.Start(app.hwnd, OnSuspendStateChanged, &app);
 
     ::SetTimer(app.hwnd, kTimerId, kTimerPeriodMs, nullptr);
@@ -496,7 +458,6 @@ int Run(HINSTANCE hinst, const Options& opt) {
 
     DS_LOG(L"shutting down");
     ::KillTimer(app.hwnd, kTimerId);
-    app.taskbars.Stop();     // restores anything we hid, on every exit path
     app.session.Stop();
     app.rescuer.Stop();
     app.renderer.StopThread();
@@ -567,8 +528,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR,
                 opt.specialized = true;   // waiting only makes sense there
             } else if (a == L"--test-pattern") {
                 opt.testPattern = true;
-            } else if (a == L"--no-taskbar-control") {
-                opt.taskbarControl = false;
             } else if (a == L"--lowest-mode") {
                 opt.lowestMode = true;
             } else if (a == L"--mode" && i + 1 < argc) {

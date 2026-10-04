@@ -481,12 +481,7 @@ public sealed class MainViewModel : ObservableObject
         // a true 16:9 middle segment instead.
         IReadOnlyList<(int Width, int Height)> defaults = layout.ComputeDefaultSegmentSizes(monW, monH);
 
-        foreach (SegmentViewModel old in Segments)
-        {
-            old.Changed -= OnSegmentChanged;
-            old.PrimaryRequested -= OnPrimaryRequested;
-            old.LaunchTargetRequested -= OnLaunchTargetRequested;
-        }
+        foreach (SegmentViewModel old in Segments) old.Changed -= OnSegmentChanged;
         Segments.Clear();
 
         for (int i = 0; i < layout.SegmentCount; i++)
@@ -494,119 +489,11 @@ public sealed class MainViewModel : ObservableObject
             (int w, int h) = reuse ? previous[i] : defaults[i];
             var vm = new SegmentViewModel(i, w, h);
             vm.Changed += OnSegmentChanged;
-            vm.PrimaryRequested += OnPrimaryRequested;
-            vm.LaunchTargetRequested += OnLaunchTargetRequested;
             Segments.Add(vm);
         }
 
-        ApplySegmentRoles();
-
         RebuildEditor();
         RaiseCommandStates();
-    }
-
-    // ------------------------------------------------------------------ segment roles
-
-    private int _primarySegment;
-    private int _launchSegment = -1;
-    private SegmentViewModel? _selectedSegment;
-
-    /// <summary>The zone whose properties are shown in the editor.</summary>
-    public SegmentViewModel? SelectedSegment
-    {
-        get => _selectedSegment;
-        set
-        {
-            if (!SetProperty(ref _selectedSegment, value)) return;
-            foreach (SegmentViewModel s in Segments) s.IsSelected = ReferenceEquals(s, value);
-            OnPropertyChanged(nameof(HasSelectedSegment));
-        }
-    }
-
-    public bool HasSelectedSegment => _selectedSegment is not null;
-
-    /// <summary>Selects a zone by index — used when a zone is clicked on the canvas.</summary>
-    public void SelectSegment(int index)
-    {
-        if (index >= 0 && index < Segments.Count) SelectedSegment = Segments[index];
-    }
-
-    /// <summary>Primary is a radio across zones: granting it to one revokes it from the rest.</summary>
-    private void OnPrimaryRequested(object? sender, EventArgs e)
-    {
-        if (sender is not SegmentViewModel chosen || !chosen.IsPrimary) return;
-
-        _primarySegment = chosen.Index;
-        foreach (SegmentViewModel s in Segments) s.SetPrimaryQuietly(s.Index == _primarySegment);
-        PersistSegmentRoles();
-        AppendStatus($"Zone {_primarySegment + 1} will be the primary display " +
-                     "(taskbar, Start menu, system tray and notification centre).");
-    }
-
-    /// <summary>Launch target is also exclusive, but may be off entirely.</summary>
-    private void OnLaunchTargetRequested(object? sender, EventArgs e)
-    {
-        if (sender is not SegmentViewModel chosen || !chosen.IsLaunchTarget) return;
-
-        _launchSegment = chosen.Index;
-        foreach (SegmentViewModel s in Segments) s.SetLaunchTargetQuietly(s.Index == _launchSegment);
-        PersistSegmentRoles();
-        AppendStatus($"New application windows will open on zone {_launchSegment + 1}.");
-    }
-
-    /// <summary>Turns the "open new windows here" preference off entirely.</summary>
-    public void ClearLaunchSegment()
-    {
-        _launchSegment = -1;
-        foreach (SegmentViewModel s in Segments) s.SetLaunchTargetQuietly(false);
-        PersistSegmentRoles();
-        AppendStatus("New windows will open wherever Windows decides.");
-    }
-
-    public RelayCommand ClearLaunchSegmentCommand => _clearLaunch ??= new RelayCommand(ClearLaunchSegment);
-    private RelayCommand? _clearLaunch;
-
-    /// <summary>Pushes the persisted roles onto freshly rebuilt segment view-models.</summary>
-    private void ApplySegmentRoles()
-    {
-        if (Segments.Count == 0) return;
-
-        AppSettings? settings = SettingsStore.Load();
-        if (settings is not null)
-        {
-            _primarySegment = settings.PrimarySegment;
-            _launchSegment = settings.LaunchSegment;
-        }
-        if (_primarySegment < 0 || _primarySegment >= Segments.Count) _primarySegment = 0;
-        if (_launchSegment >= Segments.Count) _launchSegment = -1;
-
-        for (int i = 0; i < Segments.Count; i++)
-        {
-            Segments[i].SetPrimaryQuietly(i == _primarySegment);
-            Segments[i].SetLaunchTargetQuietly(i == _launchSegment);
-
-            bool showTaskbar = settings is not null && i < settings.Segments.Count
-                ? settings.Segments[i].ShowTaskbar
-                : true;
-            Segments[i].SetShowTaskbarQuietly(showTaskbar);
-        }
-
-        SelectedSegment ??= Segments[0];
-    }
-
-    private void PersistSegmentRoles()
-    {
-        try
-        {
-            AppSettings settings = SettingsStore.Load() ?? new AppSettings();
-            settings.PrimarySegment = _primarySegment;
-            settings.LaunchSegment = _launchSegment;
-            SettingsStore.Save(settings);
-        }
-        catch (Exception ex)
-        {
-            AppendStatus("Could not save the zone roles: " + ex.Message);
-        }
     }
 
     private void OnSegmentChanged(object? sender, EventArgs e)
@@ -657,9 +544,6 @@ public sealed class MainViewModel : ObservableObject
             z.H = rects[i].H;
             z.SizeText = $"{sizes[i].Width}x{sizes[i].Height}";
             z.AspectNote = ZoneVisual.DescribeAspect(sizes[i].Width, sizes[i].Height);
-            z.IsSelected = i < Segments.Count && Segments[i].IsSelected;
-            z.IsPrimary = i == _primarySegment;
-            z.IsLaunchTarget = i == _launchSegment;
         }
 
         RebuildSplitters(layout, rects);
@@ -883,9 +767,6 @@ public sealed class MainViewModel : ObservableObject
             Layout = layout,
             Resolutions = resolutions,
             HidePhysicalDisplay = Hiding.IntentOn,
-            PrimarySegment = _primarySegment,
-            ShowTaskbar = Segments.Select(s => s.EffectiveShowTaskbar).ToList(),
-            LaunchSegment = _launchSegment,
             SpecializationUi = Hiding.CreateSpecializationUi(() => Monitors.ToList()),
             PromptToConfirm = promptToConfirm,
             Confirmer = _applyConfirmer,

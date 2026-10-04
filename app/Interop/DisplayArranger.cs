@@ -76,44 +76,31 @@ public static class DisplayArranger
     }
 
     /// <summary>
-    /// Applies mode + position for every virtual placement, then commits with a single
-    /// ChangeDisplaySettingsEx(NULL, NULL, ...) so the desktop is only rebuilt once.
-    /// Primary selection is NOT touched here — see <see cref="RebaseToPrimary"/> /
-    /// <see cref="ApplyLayout"/>, which run afterwards.
+    /// The whole desktop as it should look once the split is up: every monitor that is not one
+    /// of <paramref name="placements"/> keeps its current rect, the virtual monitors take theirs,
+    /// and everything is re-based so <paramref name="primaryDevice"/> is primary at the origin.
+    /// Written as ONE batch by <see cref="ApplyLayout"/>, the primary never leaves (0,0) halfway
+    /// through — Windows rejects that, and the rejected half-batch makes every later display
+    /// change fail too. Pure function: no display APIs are called.
     /// </summary>
-    public static void Apply(
-        MonitorInfo physical,
+    public static IReadOnlyList<MonitorPlacement> ComposeLayout(
+        IReadOnlyList<MonitorInfo> current,
         IReadOnlyList<VirtualPlacement> placements,
-        int refreshHz,
-        Action<string>? log = null)
+        int virtualRefreshHz,
+        string primaryDevice)
     {
-        var problems = new List<string>();
+        var byName = placements.ToDictionary(p => p.DeviceName, StringComparer.OrdinalIgnoreCase);
 
-        foreach (VirtualPlacement p in placements)
-        {
-            var placement = new MonitorPlacement(p.DeviceName, p.Width, p.Height, p.X, p.Y, refreshHz, false);
+        var layout = current
+            .Select(m => byName.TryGetValue(m.DeviceName, out VirtualPlacement? v)
+                ? new MonitorPlacement(v.DeviceName, v.Width, v.Height, v.X, v.Y, virtualRefreshHz, false)
+                : new MonitorPlacement(m.DeviceName, m.CurrentWidth, m.CurrentHeight, m.PositionX, m.PositionY, 0, false))
+            .ToList();
+        layout.AddRange(placements
+            .Where(v => !current.Any(m => string.Equals(m.DeviceName, v.DeviceName, StringComparison.OrdinalIgnoreCase)))
+            .Select(v => new MonitorPlacement(v.DeviceName, v.Width, v.Height, v.X, v.Y, virtualRefreshHz, false)));
 
-            int rc = SetPlacement(placement, CDS_UPDATEREGISTRY | CDS_NORESET, useRefresh: refreshHz > 1);
-            if (rc != DISP_CHANGE_SUCCESSFUL)
-            {
-                log?.Invoke($"  {p.DeviceName}: {p.Width}x{p.Height}@{refreshHz}Hz rejected " +
-                            $"({DispChangeToString(rc)}); retrying without an explicit refresh rate.");
-                rc = SetPlacement(placement, CDS_UPDATEREGISTRY | CDS_NORESET, useRefresh: false);
-            }
-
-            if (rc != DISP_CHANGE_SUCCESSFUL)
-                problems.Add($"{p.DeviceName} -> {p.Width}x{p.Height} at ({p.X},{p.Y}): {DispChangeToString(rc)}");
-            else
-                log?.Invoke($"  {p.DeviceName}: {p.Width}x{p.Height} at ({p.X},{p.Y})");
-        }
-
-        int commit = ChangeDisplaySettingsExApply(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
-        if (commit != DISP_CHANGE_SUCCESSFUL)
-            problems.Add($"final apply: {DispChangeToString(commit)}");
-
-        if (problems.Count > 0)
-            throw new DisplayArrangeException(
-                "Could not arrange the virtual monitors: " + string.Join("; ", problems) + ".");
+        return RebaseToPrimary(layout, primaryDevice);
     }
 
     // ------------------------------------------------------------------ primary switching
@@ -199,7 +186,7 @@ public static class DisplayArranger
 
         if (problems.Count > 0)
             throw new DisplayArrangeException(
-                "Could not set the primary display: " + string.Join("; ", problems) + ".");
+                "Could not arrange the displays: " + string.Join("; ", problems) + ".");
     }
 
     /// <summary>Snapshot of the live desktop as placements (refresh left untouched).</summary>

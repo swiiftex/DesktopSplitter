@@ -76,26 +76,6 @@ public sealed class ApplyRequest
     /// <summary>Try to remove the physical monitor from the desktop once the split is up.</summary>
     public bool HidePhysicalDisplay { get; init; }
 
-    /// <summary>
-    /// 0-based segment promoted to Windows' primary display — where the taskbar, Start menu,
-    /// Alt-Tab and the system tray go. Defaults to segment 0.
-    /// </summary>
-    public int PrimarySegment { get; init; }
-
-    /// <summary>Per-segment "show the taskbar here", in layout order. Empty means all true.</summary>
-    public IReadOnlyList<bool> ShowTaskbar { get; init; } = Array.Empty<bool>();
-
-    /// <summary>0-based segment new windows should open on, or -1 for off.</summary>
-    public int LaunchSegment { get; init; } = -1;
-
-    /// <summary>The primary segment index clamped into range for this layout.</summary>
-    public int EffectivePrimarySegment
-        => PrimarySegment >= 0 && PrimarySegment < Layout.SegmentCount ? PrimarySegment : 0;
-
-    /// <summary>Whether segment <paramref name="index"/> wants a taskbar (default true).</summary>
-    public bool WantsTaskbar(int index)
-        => index < 0 || index >= ShowTaskbar.Count || ShowTaskbar[index];
-
     /// <summary>Supplies the hiding dialogs. Without one, hiding is kept automatically.</summary>
     public ISpecializationUi? SpecializationUi { get; init; }
 
@@ -262,11 +242,24 @@ public static class ApplyService
         // identified by the EDID serial the driver stamps (0xD5000001 + index).
         IReadOnlyList<MonitorInfo> virtualMonitors = MapSegmentsToMonitors(baseline, arrived, segmentCount, log, ct);
 
-        // c. Arrange them contiguously to the right of the physical monitor.
+        // c. Arrange them contiguously to the right of the physical monitor and promote
+        //    segment 1's virtual monitor to PRIMARY, in one batch. The shell anchors the Start
+        //    menu, Alt-Tab switcher and most centred dialogs to the primary display; leaving
+        //    the physical monitor primary drew them across the whole panel, behind/around
+        //    the compositor's output instead of inside a segment.
+        //    Windows restores the layout it remembers for this set of monitors as they arrive
+        //    (typically segment 1 already primary and the physical monitor moved left of it),
+        //    so positions are computed from where the physical monitor is NOW.
         log.Report("Arranging virtual monitors in the virtual desktop...");
+        IReadOnlyList<MonitorInfo> current = DisplayConfig.Enumerate();
+        MonitorInfo physicalNow = current.FirstOrDefault(m => SameDevice(m.DeviceName, physical.DeviceName))
+            ?? throw new ApplyException($"{physical.DeviceName} is no longer active, so the split cannot be placed next to it.");
         IReadOnlyList<DisplayArranger.VirtualPlacement> placements =
-            DisplayArranger.ComputePlacements(physical, layout, virtualMonitors, request.Resolutions);
-        DisplayArranger.Apply(physical, placements, physical.MaxRefreshHz, log.Report);
+            DisplayArranger.ComputePlacements(physicalNow, layout, virtualMonitors, request.Resolutions);
+        string appliedPrimaryDevice = virtualMonitors[0].DeviceName;
+        DisplayArranger.ApplyLayout(
+            DisplayArranger.ComposeLayout(current, placements, physical.MaxRefreshHz, appliedPrimaryDevice),
+            log.Report);
 
         // Re-read so config.json records what Windows actually settled on, keeping the
         // segment -> monitor mapping established above.
@@ -275,25 +268,6 @@ public static class ApplyService
         virtualMonitors = virtualMonitors
             .Select(v => refreshed.TryGetValue(v.DeviceName, out MonitorInfo? cur) ? cur : v)
             .ToList();
-
-        // c2. Promote the CHOSEN segment's virtual monitor to PRIMARY. The shell anchors the Start
-        //     menu, Alt-Tab switcher and most centred dialogs to the primary display; leaving
-        //     the physical monitor primary drew them across the whole panel, behind/around
-        //     the compositor's output instead of inside a segment.
-        int primarySegment = request.EffectivePrimarySegment;
-        string appliedPrimaryDevice = virtualMonitors[primarySegment].DeviceName;
-        SwitchPrimary(appliedPrimaryDevice, $"segment {primarySegment + 1} ({appliedPrimaryDevice})", log);
-
-        // Windows only draws taskbars on non-primary displays when this preference is on, and it
-        // only reads it when Explorer starts — so we set it and say so rather than restarting
-        // Explorer behind the user's back.
-        bool wantsExtraTaskbars = Enumerable.Range(0, segmentCount)
-            .Any(i => i != primarySegment && request.WantsTaskbar(i));
-        if (wantsExtraTaskbars)
-        {
-            TaskbarPreferenceResult taskbar = MultiMonitorTaskbar.Ensure(true, log);
-            if (taskbar.RestartNeeded) log.Report("  (sign out and back in to see the extra taskbars)");
-        }
 
         // d. Write %ProgramData%\DesktopSplitter\config.json.
         // physRects mirror the editor: track sizes are normalised onto the monitor's real
@@ -307,10 +281,6 @@ public static class ApplyService
         {
             PhysicalDevice = physical.DeviceName,
             RefreshMillihertz = physical.MaxRefreshMillihertz,
-            PrimarySegment = primarySegment,
-            LaunchSegment = request.LaunchSegment >= 0 && request.LaunchSegment < segmentCount
-                ? request.LaunchSegment
-                : -1,
         };
         for (int i = 0; i < segmentCount; i++)
         {
@@ -321,8 +291,6 @@ public static class ApplyService
                 Width = w,
                 Height = h,
                 PhysRect = CompositorRect.From(physRects[i]),
-                // The primary always has a taskbar; Windows draws the main one there regardless.
-                ShowTaskbar = i == primarySegment || request.WantsTaskbar(i),
             });
         }
         WriteCompositorConfig(compositorConfig);
@@ -341,17 +309,7 @@ public static class ApplyService
             PhysicalDevice = physical.DeviceName,
             PhysicalFriendlyName = physical.FriendlyName,
             Layout = layout.Kind,
-            Segments = request.Resolutions
-                .Select((r, i) => new SegmentSize
-                {
-                    Width = r.Width,
-                    Height = r.Height,
-                    ShowTaskbar = request.WantsTaskbar(i),
-                })
-                .ToList(),
-            PrimarySegment = primarySegment,
-            LaunchSegment = request.LaunchSegment,
-            PreviousMultiMonitorTaskbar = previousSettings?.PreviousMultiMonitorTaskbar,
+            Segments = request.Resolutions.Select(r => new SegmentSize { Width = r.Width, Height = r.Height }).ToList(),
             PreviousPrimaryDevice = previousPrimaryDevice,
             PreviousPrimaryFriendlyName = previousPrimaryName,
             AppliedPrimaryDevice = appliedPrimaryDevice,
@@ -522,9 +480,6 @@ public static class ApplyService
             if (SafeEnumerate().All(m => !m.IsDeskSplitVirtual)) break;
             ct.WaitHandle.WaitOne(PollInterval);
         }
-
-        // Put Windows' multi-display taskbar preference back if we changed it.
-        MultiMonitorTaskbar.RestorePrevious(log);
 
         // Mark the split as deliberately off, so startup auto-apply does not resurrect it.
         MarkSplitInactive(deliberate: true);
