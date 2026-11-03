@@ -1,4 +1,4 @@
-// Setup.cpp - DesktopSplitterSetup entry point and mode dispatch.
+﻿// Setup.cpp - DesktopSplitterSetup entry point and mode dispatch.
 //
 // ONE shipping executable serves both audiences:
 //   * double-clicked / launched from Add-Remove Programs -> native Win32 wizard
@@ -101,7 +101,7 @@ namespace
     {
         if (g_Quiet || !g_HaveConsole || !OwnsConsole()) return;
 
-        wprintf(L"\nPress Enter to close this window...");
+        wprintf(L"\n按 Enter 键关闭此窗口...");
         fflush(stdout);
 
         int Ch = 0;
@@ -133,34 +133,34 @@ namespace
             Out(L"\n[%d] %s\n", g_StepNumber, Text);
         }
         void OnDetail(const wchar_t* Text) override { Out(L"    %s\n", Text); }
-        void OnError(const wchar_t* Text) override { Out(L"    ERROR: %s\n", Text); }
+        void OnError(const wchar_t* Text) override { Out(L"    错误: %s\n", Text); }
         void OnProgress(int) override {}
 
         bool ConfirmCertificateTrust(const CertificateSummary& Summary) override
         {
             Out(L"\n");
             Out(L"    ------------------------------------------------------------------\n");
-            Out(L"     This driver is signed by a publisher your PC does not yet trust.\n");
+            Out(L"     此驱动由您的电脑尚未信任的发布者签名。\n");
             Out(L"    ------------------------------------------------------------------\n");
-            Out(L"     Publisher       : %s\n", Summary.SubjectName);
-            Out(L"     Issued by       : %s%s\n", Summary.IssuerName, Summary.SelfSigned ? L"  (self-signed)" : L"");
-            Out(L"     Valid           : %s  ->  %s\n", Summary.NotBefore, Summary.NotAfter);
-            Out(L"     SHA-1 thumbprint: %s\n", Summary.Thumbprint);
+            Out(L"     发布者：%s\n", Summary.SubjectName);
+            Out(L"     颁发者：%s%s\n", Summary.IssuerName, Summary.SelfSigned ? L"  （自签名）" : L"");
+            Out(L"     有效期：%s  ->  %s\n", Summary.NotBefore, Summary.NotAfter);
+            Out(L"     SHA-1 指纹：%s\n", Summary.Thumbprint);
             Out(L"    ------------------------------------------------------------------\n");
-            Out(L"     Continuing adds this certificate to LocalMachine Root and\n");
-            Out(L"     TrustedPublisher. This PC will then trust ANY software signed by\n");
-            Out(L"     that publisher - not just this driver.\n");
+            Out(L"     继续操作会把此证书添加到 LocalMachine 的 Root 和\n");
+            Out(L"     TrustedPublisher 存储中。此后，本电脑将信任该发布者签名的\n");
+            Out(L"     所有软件，而不仅仅是此驱动。\n");
             Out(L"    ------------------------------------------------------------------\n\n");
 
             if (g_Quiet)
             {
-                Out(L"    /quiet specified - proceeding without asking.\n");
+                Out(L"    已指定 /quiet - 不再询问，直接继续。\n");
                 return true;
             }
 
             for (;;)
             {
-                Out(L"    Type Y to continue, N to cancel: ");
+                Out(L"    输入 Y 继续，N 取消: ");
                 wchar_t Line[64] = {};
                 if (fgetws(Line, static_cast<int>(ARRAYSIZE(Line)), stdin) == nullptr)
                 {
@@ -179,55 +179,55 @@ namespace
     void PrintUsage()
     {
         Out(
-            L"DesktopSplitterSetup - installs DesktopSplitter and its virtual display driver\n"
+            L"DesktopSplitterSetup - 安装 DesktopSplitter 及其虚拟显示驱动\n"
             L"\n"
-            L"Run with no arguments for the graphical installer.\n"
+            L"不带参数运行时打开图形安装程序。\n"
             L"\n"
-            L"Usage:\n"
-            L"  DesktopSplitterSetup.exe                 graphical installer (wizard)\n"
-            L"  DesktopSplitterSetup.exe /uninstall      graphical uninstaller\n"
-            L"  DesktopSplitterSetup.exe /quiet          install with no UI at all\n"
-            L"  DesktopSplitterSetup.exe /uninstall /quiet   remove with no UI\n"
-            L"  DesktopSplitterSetup.exe /verify         report what is embedded and what is\n"
-            L"                                           installed, change nothing (no admin)\n"
-            L"  DesktopSplitterSetup.exe /?              this help\n"
+            L"用法:\n"
+            L"  DesktopSplitterSetup.exe                 图形安装程序（向导）\n"
+            L"  DesktopSplitterSetup.exe /uninstall      图形卸载程序\n"
+            L"  DesktopSplitterSetup.exe /quiet          完全无界面安装\n"
+            L"  DesktopSplitterSetup.exe /uninstall /quiet   无界面卸载\n"
+            L"  DesktopSplitterSetup.exe /verify         报告内嵌内容与已安装状态，\n"
+            L"                                           不做任何更改（无需管理员）\n"
+            L"  DesktopSplitterSetup.exe /?              本帮助\n"
             L"\n"
-            L"Options (console modes):\n"
-            L"  /dir <path>   install location (default %%ProgramFiles%%\\DesktopSplitter)\n"
-            L"  /noshortcut   do not create desktop or Start menu shortcuts\n"
-            L"  /hidedisplay  enable the experimental \"hide the physical display\" flag\n"
-            L"                (ignored unless the Windows edition supports it)\n"
-            L"  /removecert   with /uninstall, also remove the publisher certificate\n"
-            L"  /keeptemp     keep the unpacked driver package for diagnostics\n"
+            L"选项（控制台模式）:\n"
+            L"  /dir <path>   安装位置（默认 %%ProgramFiles%%\\DesktopSplitter）\n"
+            L"  /noshortcut   不创建桌面和开始菜单快捷方式\n"
+            L"  /hidedisplay  启用实验性的“隐藏物理显示器”标志\n"
+            L"                （仅当 Windows 版本支持时才生效）\n"
+            L"  /removecert   与 /uninstall 一起使用，同时删除发布者证书\n"
+            L"  /keeptemp     保留解压出的驱动包以便诊断\n"
             L"\n"
-            L"Exit codes:\n"
-            L"   0 success                    7 certificate installation failed\n"
-            L"   1 bad command line           8 driver package installation failed\n"
-            L"   2 not elevated               9 device node creation failed\n"
-            L"   3 embedded package missing  10 post-install verification failed\n"
-            L"   4 package extraction failed 11 uninstall failed\n"
-            L"   5 catalog unusable          12 copying program files failed\n"
-            L"   6 trust declined by user    13 cancelled\n");
+            L"退出代码:\n"
+            L"   0 成功                       7 证书安装失败\n"
+            L"   1 命令行错误                 8 驱动包安装失败\n"
+            L"   2 未以管理员身份运行         9 设备节点创建失败\n"
+            L"   3 内嵌驱动包缺失            10 安装后验证失败\n"
+            L"   4 驱动包解压失败            11 卸载失败\n"
+            L"   5 目录文件不可用            12 复制程序文件失败\n"
+            L"   6 用户拒绝信任              13 已取消\n");
     }
 
     // ---- /verify ----------------------------------------------------------
     int RunVerify()
     {
-        Out(L"DesktopSplitter setup - report\n");
+        Out(L"DesktopSplitter 安装程序 - 报告\n");
         Out(L"==============================\n\n");
 
-        Out(L"Installer      : DesktopSplitter %s\n", kProductVersion);
+        Out(L"安装程序：DesktopSplitter %s\n", kProductVersion);
 
         EditionInfo Edition = {};
         GetEditionInfo(&Edition);
-        Out(L"Windows        : %s (EditionID=%s) %s build %u\n",
+        Out(L"Windows：%s (EditionID=%s) %s 内部版本 %u\n",
             Edition.ProductName, Edition.EditionId, Edition.DisplayVersion, Edition.Build);
-        Out(L"Hide-display   : %s\n\n",
+        Out(L"隐藏显示器：%s\n\n",
             Edition.SupportsSpecializedDisplay
-                ? L"supported on this edition"
-                : L"NOT supported (needs Pro for Workstations / Enterprise / IoT Enterprise)");
+                ? L"此版本支持"
+                : L"不支持（需要 Pro for Workstations / Enterprise / IoT Enterprise）");
 
-        Out(L"Embedded payload:\n");
+        Out(L"内嵌文件:\n");
         struct Item { int Id; const wchar_t* Name; };
         const Item Items[] = {
             { IDR_DRIVER_INF, L"DesktopSplitterVdd.inf" },
@@ -243,14 +243,14 @@ namespace
         for (const Item& It : Items)
         {
             const DWORD Size = ResourceSize(It.Id);
-            Out(L"  %-24s %12u bytes%s\n", It.Name, Size, Size ? L"" : L"   *** MISSING ***");
+            Out(L"  %-24s %12u 字节%s\n", It.Name, Size, Size ? L"" : L"   *** 缺失 ***");
             if (Size == 0) AllPresent = false;
         }
         Out(L"\n");
 
         if (!AllPresent)
         {
-            Out(L"This installer is incomplete.\n");
+            Out(L"此安装程序不完整。\n");
             return ExitPayloadMissing;
         }
 
@@ -258,11 +258,11 @@ namespace
         const DWORD Error = ExtractPayload(&Package);
         if (Error != ERROR_SUCCESS)
         {
-            Out(L"Could not unpack the driver package (0x%08X).\n", Error);
+            Out(L"无法解压驱动包 (0x%08X)。\n", Error);
             return ExitPayloadExtractFailed;
         }
 
-        Out(L"Driver signature:\n");
+        Out(L"驱动签名:\n");
         const LONG Trust = VerifyFileTrust(Package.CatPath);
         Out(L"  WinVerifyTrust 0x%08X - %s\n", static_cast<unsigned>(Trust), TrustStatusText(Trust));
 
@@ -272,26 +272,26 @@ namespace
             CertificateSummary Summary = {};
             if (SummarizeCertificate(Cert, &Summary))
             {
-                Out(L"  Publisher : %s\n", Summary.SubjectName);
-                Out(L"  Issued by : %s%s\n", Summary.IssuerName, Summary.SelfSigned ? L"  (self-signed)" : L"");
-                Out(L"  Valid     : %s -> %s\n", Summary.NotBefore, Summary.NotAfter);
-                Out(L"  SHA-1     : %s\n", Summary.Thumbprint);
+                Out(L"  发布者：%s\n", Summary.SubjectName);
+                Out(L"  颁发者：%s%s\n", Summary.IssuerName, Summary.SelfSigned ? L"  （自签名）" : L"");
+                Out(L"  有效期：%s -> %s\n", Summary.NotBefore, Summary.NotAfter);
+                Out(L"  SHA-1：%s\n", Summary.Thumbprint);
             }
             CertFreeCertificateContext(Cert);
         }
         Out(L"\n");
 
-        Out(L"Installed state:\n");
+        Out(L"安装状态:\n");
         wchar_t InstallDir[MAX_PATH] = {};
         wchar_t Version[64] = {};
         if (ReadInstalledState(InstallDir, ARRAYSIZE(InstallDir), Version, ARRAYSIZE(Version)))
         {
-            Out(L"  DesktopSplitter %s is installed in %s\n", Version, InstallDir);
-            Out(L"  Running setup will upgrade it in place.\n");
+            Out(L"  DesktopSplitter %s 已安装在 %s\n", Version, InstallDir);
+            Out(L"  再次运行安装程序将原地升级。\n");
         }
         else
         {
-            Out(L"  Not installed (no Add/Remove Programs entry).\n");
+            Out(L"  未安装（没有“添加/删除程序”条目）。\n");
         }
 
         OemInfList Staged = {};
@@ -299,31 +299,31 @@ namespace
         {
             for (size_t i = 0; i < Staged.Count; ++i)
             {
-                Out(L"  Driver package staged: %s  DriverVer=%s\n", Staged.Names[i], Staged.DriverVer[i]);
+                Out(L"  已暂存的驱动包: %s  DriverVer=%s\n", Staged.Names[i], Staged.DriverVer[i]);
             }
             if (Staged.Count > 1)
             {
-                Out(L"  (%zu copies present; installing prunes all but the new one)\n", Staged.Count);
+                Out(L"  （共有 %zu 份；安装时会只保留新的一份）\n", Staged.Count);
             }
         }
         else
         {
-            Out(L"  Driver package: not in the driver store.\n");
+            Out(L"  驱动包：不在驱动程序存储中。\n");
         }
 
         DeviceNodeInfo Info = {};
         if (FindDeviceNode(kHardwareId, &Info))
         {
-            Out(L"  Device present: %s  problem=%u (%s)\n",
+            Out(L"  设备存在: %s  problem=%u (%s)\n",
                 Info.InstanceId, Info.Problem, ProblemCodeText(Info.Problem));
         }
         else
         {
-            Out(L"  Device: not present.\n");
+            Out(L"  设备：不存在。\n");
         }
 
         CleanupPayload(&Package);
-        Out(L"\nNothing was changed on this PC.\n");
+        Out(L"\n未对这台电脑做任何更改。\n");
         return ExitSuccess;
     }
 }
@@ -363,7 +363,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE, _In_ LPWSTR, 
         else
         {
             EnsureConsole();
-            Out(L"Unrecognised option: %s\n\n", Args[Index]);
+            Out(L"无法识别的选项: %s\n\n", Args[Index]);
             PrintUsage();
             PauseIfInteractive();
             return ExitUsage;
@@ -406,14 +406,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE, _In_ LPWSTR, 
         if (g_Quiet)
         {
             EnsureConsole();
-            Out(L"This installer must run as administrator.\n");
+            Out(L"此安装程序必须以管理员身份运行。\n");
         }
         else
         {
             MessageBoxW(nullptr,
-                        L"DesktopSplitter Setup must be run as administrator.\n\n"
-                        L"Right-click the installer and choose \"Run as administrator\".",
-                        L"DesktopSplitter Setup", MB_ICONERROR | MB_OK);
+                        L"DesktopSplitter 安装程序必须以管理员身份运行。\n\n"
+                        L"请右键点击安装程序，选择“以管理员身份运行”。",
+                        L"DesktopSplitter 安装程序", MB_ICONERROR | MB_OK);
         }
         return ExitNotElevated;
     }
@@ -453,7 +453,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE Instance, _In_opt_ HINSTANCE, _In_ LPWSTR, 
             Result = RunInstallSequence(&Options, &Sink);
         }
 
-        Out(L"\n%s (exit %d)\n", Result == ExitSuccess ? L"Completed." : L"Failed.", Result);
+        Out(L"\n%s（退出代码 %d）\n", Result == ExitSuccess ? L"已完成。" : L"失败。", Result);
         return Result;
     }
 

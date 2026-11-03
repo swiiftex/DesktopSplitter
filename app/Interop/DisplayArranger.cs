@@ -123,8 +123,8 @@ public static class DisplayArranger
         if (origin is null)
         {
             throw new DisplayArrangeException(
-                $"Monitor '{primaryDevice}' is not in the current display set, so it cannot be made primary. " +
-                $"Known: {string.Join(", ", placements.Select(p => p.DeviceName))}.");
+                $"显示器“{primaryDevice}”不在当前显示器集合中，无法将其设为主显示器。" +
+                $"已知：{string.Join(", ", placements.Select(p => p.DeviceName))}。");
         }
 
         int dx = -origin.X;
@@ -151,12 +151,12 @@ public static class DisplayArranger
 
         int primaryCount = placements.Count(p => p.IsPrimary);
         if (primaryCount != 1)
-            throw new DisplayArrangeException($"Exactly one monitor must be primary, got {primaryCount}.");
+            throw new DisplayArrangeException($"必须恰好有一台主显示器，实际为 {primaryCount} 台。");
 
         MonitorPlacement primary = placements.First(p => p.IsPrimary);
         if (primary.X != 0 || primary.Y != 0)
             throw new DisplayArrangeException(
-                $"The primary monitor must sit at (0,0); {primary.DeviceName} is at ({primary.X},{primary.Y}).");
+                $"主显示器必须位于 (0,0)；{primary.DeviceName} 位于 ({primary.X},{primary.Y})。");
 
         var problems = new List<string>();
 
@@ -168,25 +168,25 @@ public static class DisplayArranger
             int rc = SetPlacement(p, flags, useRefresh: p.RefreshHz > 1);
             if (rc != DISP_CHANGE_SUCCESSFUL && p.RefreshHz > 1)
             {
-                log?.Invoke($"  {p.DeviceName}: rejected at {p.RefreshHz}Hz ({DispChangeToString(rc)}); " +
-                            "retrying without an explicit refresh rate.");
+                log?.Invoke($"  {p.DeviceName}：在 {p.RefreshHz}Hz 下被拒绝（{DispChangeToString(rc)}）；" +
+                            "不指定刷新率重试。");
                 rc = SetPlacement(p, flags, useRefresh: false);
             }
 
             if (rc != DISP_CHANGE_SUCCESSFUL)
                 problems.Add($"{p.DeviceName} -> ({p.X},{p.Y}): {DispChangeToString(rc)}");
             else
-                log?.Invoke($"  {p.DeviceName}: {p.Width}x{p.Height} at ({p.X},{p.Y})" +
-                            (p.IsPrimary ? "   <-- PRIMARY" : string.Empty));
+                log?.Invoke($"  {p.DeviceName}：{p.Width}x{p.Height}，位于 ({p.X},{p.Y})" +
+                            (p.IsPrimary ? "   <-- 主显示器" : string.Empty));
         }
 
         int commit = ChangeDisplaySettingsExApply(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
         if (commit != DISP_CHANGE_SUCCESSFUL)
-            problems.Add($"final apply: {DispChangeToString(commit)}");
+            problems.Add($"最终应用：{DispChangeToString(commit)}");
 
         if (problems.Count > 0)
             throw new DisplayArrangeException(
-                "Could not arrange the displays: " + string.Join("; ", problems) + ".");
+                "无法排列显示器：" + string.Join("； ", problems) + "。");
     }
 
     /// <summary>Snapshot of the live desktop as placements (refresh left untouched).</summary>

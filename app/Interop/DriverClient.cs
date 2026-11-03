@@ -88,7 +88,7 @@ public static class DriverClient
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x901, METHOD_BUFFERED, FILE_ANY_ACCESS);
 
     public const string DriverMissingMessage =
-        "Driver device not found — install the driver first (installer\\install-driver.ps1).";
+        "未找到驱动设备 —— 请先运行 DesktopSplitterSetup 安装程序来安装驱动。";
 
     /// <summary>Builds an all-zero-but-valid config with room for the fixed arrays.</summary>
     public static DESKSPLIT_CONFIG NewConfig()

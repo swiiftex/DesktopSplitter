@@ -53,51 +53,51 @@ public static class HidingStatus
     {
         bool intentOn = ReadIntent();
         StatusRow intent = intentOn
-            ? new StatusRow("Hide during Apply", CheckState.Ok,
-                "On — Apply will remove the physical monitor from the desktop once the split is up.")
-            : new StatusRow("Hide during Apply", CheckState.No,
-                "Off — the compositor just covers the physical monitor (the default).");
+            ? new StatusRow("应用时隐藏", CheckState.Ok,
+                "开——应用分屏后会把物理显示器从桌面移除。")
+            : new StatusRow("应用时隐藏", CheckState.No,
+                "关——合成器只是覆盖物理显示器（默认）。");
 
-        if (selected is null) return Degenerate("No monitor selected.", intent, intentOn);
+        if (selected is null) return Degenerate("未选择显示器。", intent, intentOn);
 
         if (!MonitorSpecialization.TryGet(selected, out SpecializationState state, out int rc))
         {
-            string detail = $"DisplayConfig GET (type 12) failed with error {rc}" +
+            string detail = $"DisplayConfig GET（类型 12）失败，错误 {rc}" +
                             (rc == MonitorSpecialization.ERROR_INVALID_PARAMETER
-                                ? " — this Windows build may not support monitor specialization."
-                                : ".");
+                                ? "——此 Windows 版本可能不支持显示器专用化。"
+                                : "。");
             return Degenerate(detail, intent, intentOn);
         }
 
         // Capability rows say what is POSSIBLE. The state row says what is HAPPENING. Keeping the
         // two visibly distinct matters: a green "supports hiding" was previously misread as
         // "already hiding".
-        var system = new StatusRow("Windows can hide displays",
+        var system = new StatusRow("Windows 可隐藏显示器",
             state.AvailableForSystem ? CheckState.Ok : CheckState.No,
             state.AvailableForSystem
-                ? "Yes — this Windows edition allows displays to be removed from the desktop."
-                : "No — this Windows edition does not allow displays to be removed from the desktop.");
+                ? "是——此 Windows 版本允许把显示器从桌面移除。"
+                : "否——此 Windows 版本不允许把显示器从桌面移除。");
 
-        var monitor = new StatusRow("This monitor can be hidden",
+        var monitor = new StatusRow("此显示器可被隐藏",
             state.AvailableForMonitor ? CheckState.Ok : CheckState.No,
             state.AvailableForMonitor
-                ? $"Yes — {selected.DisplayLabel} is eligible (capability only; GET raw 0x{state.RawValue:X})."
-                : $"No — {selected.DisplayLabel} is not eligible (GET raw 0x{state.RawValue:X}).");
+                ? $"是——{selected.DisplayLabel} 符合条件（仅表示能力；GET 原始值 0x{state.RawValue:X}）。"
+                : $"否——{selected.DisplayLabel} 不符合条件（GET 原始值 0x{state.RawValue:X}）。");
 
-        var current = new StatusRow("Hidden right now",
+        var current = new StatusRow("当前已隐藏",
             state.EnabledNow ? CheckState.Ok : CheckState.Info,
             state.EnabledNow
-                ? $"YES — {selected.DisplayLabel} is off the desktop right now."
-                : $"No — {selected.DisplayLabel} is a normal desktop display right now.");
+                ? $"是——{selected.DisplayLabel} 当前已不在桌面上。"
+                : $"否——{selected.DisplayLabel} 当前是普通的桌面显示器。");
 
         return new HidingSnapshot(system, monitor, current, intent,
                                   IsSplitActive(), state.Available, state.EnabledNow, intentOn);
     }
 
     private static HidingSnapshot Degenerate(string detail, StatusRow intent, bool intentOn)
-        => new(new StatusRow("Windows can hide displays", CheckState.Unknown, detail),
-               new StatusRow("This monitor can be hidden", CheckState.Unknown, detail),
-               new StatusRow("Hidden right now", CheckState.Unknown, detail),
+        => new(new StatusRow("Windows 可隐藏显示器", CheckState.Unknown, detail),
+               new StatusRow("此显示器可被隐藏", CheckState.Unknown, detail),
+               new StatusRow("当前已隐藏", CheckState.Unknown, detail),
                intent, IsSplitActive(), false, false, intentOn);
 
     /// <summary>A split must be reverted before hiding can be enabled or disabled.</summary>
@@ -144,30 +144,30 @@ public static class HidingStatus
         }
         catch (Exception ex)
         {
-            return new IntentWriteResult(false, false, "Could not save the setting: " + ex.Message);
+            return new IntentWriteResult(false, false, "无法保存设置：" + ex.Message);
         }
 
         try
         {
             using RegistryKey key = Registry.LocalMachine.CreateSubKey(DeskSplitKey, writable: true)
-                                   ?? throw new UnauthorizedAccessException("key could not be opened");
+                                   ?? throw new UnauthorizedAccessException("无法打开注册表项");
             key.SetValue(HideFlagValue, enabled ? 1 : 0, RegistryValueKind.DWord);
             return new IntentWriteResult(true, true,
-                $"Display hiding {(enabled ? "enabled" : "disabled")} (saved for this user and machine-wide).");
+                $"显示器隐藏已{(enabled ? "启用" : "禁用")}（已为当前用户和整机保存）。");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
         {
             return new IntentWriteResult(true, false,
-                $"Display hiding {(enabled ? "enabled" : "disabled")} for this user. " +
-                $@"The machine-wide flag (HKLM\{DeskSplitKey}\{HideFlagValue}) needs administrator " +
-                "rights and was left alone — DesktopSplitter passes --specialized to the compositor " +
-                "itself, so this only matters if you run dscomp.exe standalone.");
+                $"显示器隐藏已为当前用户{(enabled ? "启用" : "禁用")}。" +
+                $@"整机标志（HKLM\{DeskSplitKey}\{HideFlagValue}）需要管理员" +
+                "权限，未做修改——DesktopSplitter 会自行给合成器传递 --specialized 参数，" +
+                "所以这只在你单独运行 dscomp.exe 时才有影响。");
         }
         catch (Exception ex)
         {
             return new IntentWriteResult(true, false,
-                $"Display hiding {(enabled ? "enabled" : "disabled")} for this user; the machine-wide " +
-                $"flag could not be written: {ex.Message}");
+                $"显示器隐藏已为当前用户{(enabled ? "启用" : "禁用")}；整机" +
+                $"标志写入失败：{ex.Message}");
         }
     }
 

@@ -21,16 +21,16 @@ public sealed class TrayIconService : IDisposable
 
     public TrayIconService()
     {
-        _applyLastItem = new ToolStripMenuItem("Apply last configuration");
+        _applyLastItem = new ToolStripMenuItem("应用上次的配置");
         _applyLastItem.Click += (_, _) => ApplyLastRequested?.Invoke(this, EventArgs.Empty);
 
-        _revertItem = new ToolStripMenuItem("Revert");
+        _revertItem = new ToolStripMenuItem("撤销");
         _revertItem.Click += (_, _) => RevertRequested?.Invoke(this, EventArgs.Empty);
 
-        var openItem = new ToolStripMenuItem("Open DesktopSplitter") { Font = new Font(SystemFonts.MenuFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
+        var openItem = new ToolStripMenuItem("打开 DesktopSplitter") { Font = new Font(SystemFonts.MenuFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
         openItem.Click += (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty);
 
-        var exitItem = new ToolStripMenuItem("Exit");
+        var exitItem = new ToolStripMenuItem("退出");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
 
         _menu = new ContextMenuStrip();

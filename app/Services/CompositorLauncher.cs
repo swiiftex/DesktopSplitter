@@ -163,15 +163,14 @@ public static class CompositorLauncher
                     EventWaitHandle.TryOpenExisting(SpecializedLiveEventName, out EventWaitHandle? opened))
                 {
                     live = opened;
-                    log?.Invoke($"Opened {SpecializedLiveEventName}.");
+                    log?.Invoke($"已打开 {SpecializedLiveEventName}。");
                 }
 
                 if (live is not null && live.WaitOne(TimeSpan.Zero)) return SpecializedWait.Live;
 
                 if (compositor.HasExited)
                 {
-                    log?.Invoke($"Compositor exited with code {compositor.ExitCode} before confirming " +
-                                "specialized presentation.");
+                    log?.Invoke($"合成器在确认专用化输出之前退出，退出代码 {compositor.ExitCode}。");
                     return SpecializedWait.CompositorExited;
                 }
 
@@ -180,7 +179,7 @@ public static class CompositorLauncher
         }
         catch (UnauthorizedAccessException)
         {
-            log?.Invoke($"WARNING: {SpecializedLiveEventName} exists but could not be opened (DACL).");
+            log?.Invoke($"警告：{SpecializedLiveEventName} 存在但无法打开（DACL）。");
         }
         catch (WaitHandleCannotBeOpenedException)
         {
@@ -200,9 +199,9 @@ public static class CompositorLauncher
         if (!TryFindExecutable(out string exe))
         {
             throw new CompositorNotFoundException(
-                $"Compositor not found. Build it and place {ExecutableName} at:{Environment.NewLine}" +
+                $"找不到合成器。请构建它，并把 {ExecutableName} 放到：{Environment.NewLine}" +
                 $"    {ExpectedPath}{Environment.NewLine}" +
-                $"(or next to DesktopSplitter.exe in {BaseDirectory}).");
+                $"（或放到 {BaseDirectory} 中 DesktopSplitter.exe 的旁边）。");
         }
 
         var psi = new ProcessStartInfo
@@ -216,7 +215,7 @@ public static class CompositorLauncher
 
         Process? p = Process.Start(psi);
         if (p is null)
-            throw new CompositorNotFoundException($"Failed to start '{exe}'.");
+            throw new CompositorNotFoundException($"无法启动“{exe}”。");
         return p;
     }
 
@@ -252,15 +251,15 @@ public static class CompositorLauncher
         Process[] running = GetRunningProcesses();
         if (running.Length == 0)
         {
-            log?.Invoke("Compositor is not running.");
+            log?.Invoke("合成器未在运行。");
             SignalStop();   // harmless; clears a stale signal state for the next run
             return true;
         }
 
         bool signalled = SignalStop();
         log?.Invoke(signalled
-            ? $"Signalled {StopEventName}; waiting for the compositor to exit."
-            : $"Could not open {StopEventName}; falling back to WM_CLOSE.");
+            ? $"已发送 {StopEventName} 信号；等待合成器退出。"
+            : $"无法打开 {StopEventName}；改用 WM_CLOSE。");
 
         if (!signalled)
         {
@@ -278,7 +277,7 @@ public static class CompositorLauncher
                 int remaining = (int)Math.Max(0, (deadline - DateTime.UtcNow).TotalMilliseconds);
                 if (!p.WaitForExit(remaining))
                 {
-                    log?.Invoke($"Compositor (pid {p.Id}) did not exit within the timeout — terminating it.");
+                    log?.Invoke($"合成器（pid {p.Id}）未在超时时间内退出——正在终止它。");
                     try { p.Kill(entireProcessTree: true); p.WaitForExit(3000); } catch { /* best effort */ }
                 }
             }

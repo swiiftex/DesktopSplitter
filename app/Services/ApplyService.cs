@@ -146,16 +146,16 @@ public static class ApplyService
         //    lapses, exactly like Windows' own resolution prompt.
         if (!request.PromptToConfirm || request.Confirmer is null) return applied;
 
-        string summary = $"{request.Layout.Name} on {request.Physical.DisplayLabel} " +
-                         $"({string.Join(", ", request.Resolutions.Select(r => $"{r.Width}x{r.Height}"))})";
+        string summary = $"在 {request.Physical.DisplayLabel} 上应用{request.Layout.Name}" +
+                         $"（{string.Join(", ", request.Resolutions.Select(r => $"{r.Width}x{r.Height}"))}）";
 
         if (request.Confirmer.ConfirmApply(summary, ConfirmChangesSeconds, ct))
         {
-            log.Report("Change kept.");
+            log.Report("已保留更改。");
             return applied;
         }
 
-        log.Report("Change not confirmed — rolling back.");
+        log.Report("更改未确认——正在回滚。");
         string restored = RollBackTo(snapshot, log, ct, request.SpecializationUi);
         return new ApplyResult
         {
@@ -183,7 +183,7 @@ public static class ApplyService
         //    monitors we are about to tear down.
         if (CompositorLauncher.IsRunning())
         {
-            log.Report("Stopping the running compositor first...");
+            log.Report("先停止正在运行的合成器……");
             CompositorLauncher.StopAndWait(CompositorStopTimeout, log.Report);
         }
 
@@ -214,8 +214,8 @@ public static class ApplyService
             };
         }
 
-        log.Report($"Sending IOCTL_DESKSPLIT_SET_CONFIG (0x{DriverClient.IOCTL_DESKSPLIT_SET_CONFIG:X8}) " +
-                   $"for {segmentCount} monitor(s) at {physical.MaxRefreshMillihertz} mHz...");
+        log.Report($"发送 IOCTL_DESKSPLIT_SET_CONFIG（0x{DriverClient.IOCTL_DESKSPLIT_SET_CONFIG:X8}）：" +
+                   $"{segmentCount} 台显示器，{physical.MaxRefreshMillihertz} mHz……");
         try
         {
             DriverClient.SetConfig(cfg);
@@ -230,12 +230,12 @@ public static class ApplyService
         }
 
         // b. Wait for the virtual monitors to arrive.
-        log.Report($"Waiting for {segmentCount} virtual monitor(s) to appear (up to {MonitorArrivalTimeout.TotalSeconds:0}s)...");
+        log.Report($"等待 {segmentCount} 台虚拟显示器出现（最多 {MonitorArrivalTimeout.TotalSeconds:0} 秒）……");
         IReadOnlyList<MonitorInfo> arrived = WaitForVirtualMonitors(baseline, segmentCount, ct);
         foreach (MonitorInfo m in arrived)
         {
-            log.Report($"  Found {m.DeviceName} ({m.FriendlyName})" +
-                       (m.Edid is null ? "  [no EDID]" : $"  [{m.Edid}]"));
+            log.Report($"  找到 {m.DeviceName}（{m.FriendlyName}）" +
+                       (m.Edid is null ? "  [无 EDID]" : $"  [{m.Edid}]"));
         }
 
         // Map segment i -> the monitor the driver created as DESKSPLIT_CONFIG.Monitors[i],
@@ -250,10 +250,10 @@ public static class ApplyService
         //    Windows restores the layout it remembers for this set of monitors as they arrive
         //    (typically segment 1 already primary and the physical monitor moved left of it),
         //    so positions are computed from where the physical monitor is NOW.
-        log.Report("Arranging virtual monitors in the virtual desktop...");
+        log.Report("正在虚拟桌面中排列虚拟显示器……");
         IReadOnlyList<MonitorInfo> current = DisplayConfig.Enumerate();
         MonitorInfo physicalNow = current.FirstOrDefault(m => SameDevice(m.DeviceName, physical.DeviceName))
-            ?? throw new ApplyException($"{physical.DeviceName} is no longer active, so the split cannot be placed next to it.");
+            ?? throw new ApplyException($"{physical.DeviceName} 已不再活动，无法把分屏放在它旁边。");
         IReadOnlyList<DisplayArranger.VirtualPlacement> placements =
             DisplayArranger.ComputePlacements(physicalNow, layout, virtualMonitors, request.Resolutions);
         string appliedPrimaryDevice = virtualMonitors[0].DeviceName;
@@ -275,7 +275,7 @@ public static class ApplyService
         // subdivision, so a dragged/typed split lands on screen exactly where it was drawn.
         IReadOnlyList<PixelRect> physRects = LayoutGeometry.ComputePhysRects(
             layout, physical.CurrentWidth, physical.CurrentHeight, request.Resolutions);
-        log.Report("Segment rects on the physical monitor: " +
+        log.Report("物理显示器上的分区矩形：" +
                    string.Join("  ", physRects.Select((r, i) => $"[{i + 1}] {r}")));
         var compositorConfig = new CompositorConfig
         {
@@ -294,7 +294,7 @@ public static class ApplyService
             });
         }
         WriteCompositorConfig(compositorConfig);
-        log.Report($"Wrote {ConfigPath}");
+        log.Report($"已写入 {ConfigPath}");
 
         // e. Optionally hide the physical monitor, then launch the compositor.
         //    Ordering matters: the display must already be specialized when dscomp starts, and
@@ -323,7 +323,7 @@ public static class ApplyService
             SpecializationHashes = previousSettings?.SpecializationHashes ?? new Dictionary<string, string>(),
             SpecializationHashRecipe = previousSettings?.SpecializationHashRecipe ?? string.Empty,
         });
-        log.Report($"Saved {SettingsStore.FilePath}");
+        log.Report($"已保存 {SettingsStore.FilePath}");
 
         return new ApplyResult
         {
@@ -404,9 +404,9 @@ public static class ApplyService
     {
         if (!snapshot.WasApplied)
         {
-            log.Report("Nothing was applied before this change — reverting completely.");
+            log.Report("此次更改之前没有已应用的分屏——完全还原。");
             Revert(log, ct, ui);
-            return "no split (fully reverted)";
+            return "无分屏（已完全还原）";
         }
 
         MonitorInfo? physical = FindLive(snapshot.PhysicalDevice);
@@ -414,12 +414,12 @@ public static class ApplyService
 
         if (physical is null || snapshot.Resolutions.Count != layout.SegmentCount)
         {
-            log.Report("The previous configuration is no longer valid — reverting completely.");
+            log.Report("之前的配置已失效——完全还原。");
             Revert(log, ct, ui);
-            return "no split (fully reverted)";
+            return "无分屏（已完全还原）";
         }
 
-        log.Report($"Restoring the previous configuration: {layout.Name} on {physical.DisplayLabel}.");
+        log.Report($"正在恢复之前的配置：在 {physical.DisplayLabel} 上的{layout.Name}。");
         Apply(new ApplyRequest
         {
             Physical = physical,
@@ -430,7 +430,7 @@ public static class ApplyService
             PromptToConfirm = false,
         }, log, ct);
 
-        return $"{layout.Name} on {physical.DisplayLabel}";
+        return $"在 {physical.DisplayLabel} 上的{layout.Name}";
     }
 
     // ------------------------------------------------------------------ revert
@@ -445,9 +445,9 @@ public static class ApplyService
 
     private static void RevertCore(IProgress<string> log, CancellationToken ct, ISpecializationUi? ui)
     {
-        log.Report("Stopping the compositor...");
+        log.Report("正在停止合成器……");
         bool stopped = CompositorLauncher.StopAndWait(CompositorStopTimeout, log.Report);
-        log.Report(stopped ? "Compositor stopped." : "Compositor may still be running.");
+        log.Report(stopped ? "合成器已停止。" : "合成器可能仍在运行。");
 
         // Put the physical monitor back on the desktop BEFORE anything else is torn down —
         // otherwise the primary restore and the virtual-monitor removal both operate on a
@@ -459,7 +459,7 @@ public static class ApplyService
         // its own terms, which scrambles window positions.
         RestorePrimaryBeforeTeardown(log);
 
-        log.Report("Sending IOCTL_DESKSPLIT_SET_CONFIG with MonitorCount = 0...");
+        log.Report("发送 IOCTL_DESKSPLIT_SET_CONFIG，MonitorCount = 0……");
         try
         {
             DriverClient.ClearConfig();
@@ -484,7 +484,7 @@ public static class ApplyService
         // Mark the split as deliberately off, so startup auto-apply does not resurrect it.
         MarkSplitInactive(deliberate: true);
 
-        log.Report("Reverted — virtual monitors removed.");
+        log.Report("已撤销——虚拟显示器已移除。");
     }
 
     // ------------------------------------------------------------------ display hiding
@@ -514,34 +514,34 @@ public static class ApplyService
         MonitorInfo? physical = FindLive(request.Physical.DeviceName);
         if (physical is null)
         {
-            log.Report($"WARNING: {request.Physical.DeviceName} disappeared; starting the compositor normally.");
+            log.Report($"警告：{request.Physical.DeviceName} 已消失；以普通方式启动合成器。");
             return (StartPlain(log), string.Empty);
         }
 
         // Windows only allows a NON-primary display to be specialized.
         if (physical.IsPrimary)
         {
-            log.Report($"WARNING: {physical.DisplayLabel} is still the primary display, and Windows only " +
-                       "allows non-primary displays to be hidden. Skipping hiding.");
+            log.Report($"警告：{physical.DisplayLabel} 仍是主显示器，而 Windows 只" +
+                       "允许隐藏非主显示器。跳过隐藏。");
             return (StartPlain(log), string.Empty);
         }
 
         if (!MonitorSpecialization.TryGet(physical, out SpecializationState state, out int rc))
         {
-            log.Report($"WARNING: could not read monitor specialization (error {rc}). Skipping hiding.");
+            log.Report($"警告：无法读取显示器专用化状态（错误 {rc}）。跳过隐藏。");
             return (StartPlain(log), string.Empty);
         }
 
         if (!state.Available)
         {
-            log.Report($"WARNING: {physical.DisplayLabel} cannot be hidden (GET raw 0x{state.RawValue:X}: " +
-                       $"monitor={state.AvailableForMonitor}, system={state.AvailableForSystem}). Skipping hiding.");
+            log.Report($"警告：{physical.DisplayLabel} 无法隐藏（GET 原始值 0x{state.RawValue:X}：" +
+                       $"monitor={state.AvailableForMonitor}，system={state.AvailableForSystem}）。跳过隐藏。");
             return (StartPlain(log), string.Empty);
         }
 
         bool alreadyHidden = state.EnabledNow;
         if (alreadyHidden)
-            log.Report($"{physical.DisplayLabel} is already off the desktop — going straight to acquiring it.");
+            log.Report($"{physical.DisplayLabel} 已不在桌面上——直接进入接管流程。");
 
         // START THE COMPOSITOR FIRST. It polls until the display becomes specialized and then
         // acquires it. If the display were removed from the desktop before anything was ready to
@@ -551,19 +551,19 @@ public static class ApplyService
             CompositorLauncher.SpecializedArgument,
             CompositorLauncher.WaitForTargetArgument, CompositorLauncher.WaitForTargetSeconds.ToString(),
             CompositorLauncher.FrameDeadlineArgument, CompositorLauncher.FrameDeadlineSeconds.ToString());
-        log.Report($"Started {compositor.ProcessName}.exe {CompositorLauncher.SpecializedArgument} " +
+        log.Report($"已启动 {compositor.ProcessName}.exe {CompositorLauncher.SpecializedArgument} " +
                    $"{CompositorLauncher.WaitForTargetArgument} {CompositorLauncher.WaitForTargetSeconds} " +
-                   $"(pid {compositor.Id}) — it is now waiting to take over the display.");
+                   $"（pid {compositor.Id}）——它正在等待接管显示器。");
 
         if (!alreadyHidden && !SetSpecialized(physical, true, request.SpecializationUi, log, ct))
         {
-            log.Report("Display hiding was cancelled — restarting the compositor in windowed mode.");
+            log.Report("显示器隐藏已取消——以窗口模式重启合成器。");
             CompositorLauncher.StopAndWait(CompositorStopTimeout, log.Report);
             return (StartPlain(log), string.Empty);
         }
 
-        log.Report($"Waiting up to {SpecializedLiveTimeout.TotalSeconds:0}s for " +
-                   $"{CompositorLauncher.SpecializedLiveEventName}...");
+        log.Report($"最多等待 {SpecializedLiveTimeout.TotalSeconds:0} 秒，等待 " +
+                   $"{CompositorLauncher.SpecializedLiveEventName}……");
         CompositorLauncher.SpecializedWait wait =
             CompositorLauncher.WaitForSpecializedLive(compositor, SpecializedLiveTimeout, ct, log.Report);
 
@@ -576,7 +576,7 @@ public static class ApplyService
         if (keep) return (compositor, physical.DeviceName);
 
         // Roll back: stop the compositor, put the display back, restart windowed.
-        log.Report("Rolling back display hiding...");
+        log.Report("正在回滚显示器隐藏……");
         CompositorLauncher.StopAndWait(CompositorStopTimeout, log.Report);
         RestoreToDesktop(physical, request.SpecializationUi, log, ct);
 
@@ -597,20 +597,19 @@ public static class ApplyService
         switch (wait)
         {
             case CompositorLauncher.SpecializedWait.Live:
-                log.Report("Compositor confirmed specialized presentation — asking you to confirm.");
+                log.Report("合成器已确认通过隐藏显示器输出画面——请你确认。");
                 bool keep = askUser();
-                log.Report(keep ? "Keeping the hidden display." : "Restoring the display to the desktop.");
+                log.Report(keep ? "保留隐藏显示器。" : "把显示器恢复到桌面。");
                 return keep;
 
             case CompositorLauncher.SpecializedWait.CompositorExited:
-                log.Report("The compositor stopped before it could present through the hidden display — " +
-                           "rolling back without prompting.");
+                log.Report("合成器在通过隐藏显示器输出画面之前就已停止——" +
+                           "不询问，直接回滚。");
                 return false;
 
             default:
-                log.Report($"No {CompositorLauncher.SpecializedLiveEventName} signal within " +
-                           $"{SpecializedLiveTimeout.TotalSeconds:0}s — treating hiding as failed and " +
-                           "rolling back without prompting.");
+                log.Report($"{SpecializedLiveTimeout.TotalSeconds:0} 秒内未收到 {CompositorLauncher.SpecializedLiveEventName} 信号" +
+                           "——视为隐藏失败，不询问，直接回滚。");
                 return false;
         }
     }
@@ -630,8 +629,8 @@ public static class ApplyService
     private static bool SetSpecialized(
         MonitorInfo physical, bool enable, ISpecializationUi? ui, IProgress<string> log, CancellationToken ct)
     {
-        string what = enable ? "Removing" : "Restoring";
-        log.Report($"{what} {physical.DisplayLabel} {(enable ? "from" : "to")} the desktop...");
+        log.Report(enable ? $"正在把 {physical.DisplayLabel} 从桌面移除……"
+                          : $"正在把 {physical.DisplayLabel} 恢复到桌面……");
 
         AdminFlowResult admin = SystemSettingsAdminFlowsClient.TryRun(physical, enable, log, ct);
         if (admin.Success)
@@ -641,17 +640,17 @@ public static class ApplyService
         }
 
         if (admin.NotAttempted)
-            log.Report($"Automatic route unavailable: {admin.Message}");
+            log.Report($"自动方式不可用：{admin.Message}");
         else
-            log.Report("Automatic route failed: " + admin.Message);
+            log.Report("自动方式失败：" + admin.Message);
 
-        log.Report("Using the Windows Settings route.");
+        log.Report("改用 Windows 设置方式。");
 
         if (ui is null)
         {
-            log.Report($"Do it yourself: Settings > System > Display > Advanced display > " +
-                       $"select {physical.DisplayLabel} > turn {(enable ? "ON" : "OFF")} " +
-                       "\"Remove display from desktop\".");
+            log.Report($"请手动操作：设置 > 系统 > 显示 > 高级显示 > " +
+                       $"选择 {physical.DisplayLabel} > {(enable ? "打开" : "关闭")} " +
+                       "“将显示器从桌面移除”。");
             return false;
         }
 
@@ -680,10 +679,9 @@ public static class ApplyService
         }
         else if (watcher.ElevationRequired)
         {
-            log.Report("Note: Windows ran its display helper, but DesktopSplitter could not read how " +
-                       "it was called because that helper runs as administrator. Run DesktopSplitter " +
-                       "as administrator once while you do this, and it will remember the setting and " +
-                       "be able to do it for you in one click from then on.");
+            log.Report("注意：Windows 运行了它的显示助手程序，但该程序以管理员身份运行，" +
+                       "DesktopSplitter 无法读取它的调用方式。在你做此操作时以管理员身份" +
+                       "运行一次 DesktopSplitter，它就会记住该设置，之后可以一键为你完成。");
         }
 
         return reached;
@@ -694,15 +692,15 @@ public static class ApplyService
         MonitorInfo physical, ISpecializationUi? ui, IProgress<string> log, CancellationToken ct)
     {
         if (SetSpecialized(physical, false, ui, log, ct))
-            log.Report($"{physical.DisplayLabel} is back on the desktop.");
+            log.Report($"{physical.DisplayLabel} 已恢复到桌面。");
         else
-            log.Report($"WARNING: {physical.DisplayLabel} may still be off the desktop.");
+            log.Report($"警告：{physical.DisplayLabel} 可能仍不在桌面上。");
     }
 
     private static Process StartPlain(IProgress<string> log)
     {
         Process compositor = CompositorLauncher.Start();
-        log.Report($"Started {compositor.ProcessName}.exe (pid {compositor.Id}).");
+        log.Report($"已启动 {compositor.ProcessName}.exe（pid {compositor.Id}）。");
         return compositor;
     }
 
@@ -720,11 +718,11 @@ public static class ApplyService
         MonitorInfo? monitor = FindLive(device);
         if (monitor is null)
         {
-            log.Report($"Note: {device} was hidden by DesktopSplitter but is no longer connected.");
+            log.Report($"注意：{device} 曾被 DesktopSplitter 隐藏，但已不再连接。");
         }
         else if (MonitorSpecialization.TryGet(monitor, out SpecializationState state, out _) && state.EnabledNow)
         {
-            log.Report($"Restoring {monitor.DisplayLabel} to the desktop...");
+            log.Report($"正在把 {monitor.DisplayLabel} 恢复到桌面……");
             RestoreToDesktop(monitor, ui, log, ct);
         }
 
@@ -745,7 +743,7 @@ public static class ApplyService
         if (settings is null || string.IsNullOrEmpty(settings.SpecializedDevice)) return;
         if (HidingStatus.IsSplitActive()) return;
 
-        log.Report($"Recovering from a previous session: {settings.SpecializedDevice} was left hidden.");
+        log.Report($"正在从上个会话恢复：{settings.SpecializedDevice} 之前被遗留为隐藏状态。");
         ClearSpecializationIfOurs(log);
     }
 
@@ -768,27 +766,27 @@ public static class ApplyService
 
         if (livePrimary is not null && !livePrimary.IsDeskSplitVirtual)
         {
-            log.Report($"Current primary display: {livePrimary.DisplayLabel} ({livePrimary.DeviceName}) " +
-                       "— will be restored on Revert.");
+            log.Report($"当前主显示器：{livePrimary.DisplayLabel}（{livePrimary.DeviceName}）" +
+                       "——撤销时将恢复它。");
             return (livePrimary.DeviceName, livePrimary.FriendlyName);
         }
 
         AppSettings? prior = SettingsStore.Load();
         if (prior is not null && !string.IsNullOrEmpty(prior.PreviousPrimaryDevice))
         {
-            log.Report("A split is already active; carrying forward the saved pre-split primary " +
-                       $"{prior.PreviousPrimaryDevice}.");
+            log.Report("已有分屏处于活动状态；沿用之前保存的分屏前主显示器 " +
+                       $"{prior.PreviousPrimaryDevice}。");
             return (prior.PreviousPrimaryDevice, prior.PreviousPrimaryFriendlyName);
         }
 
         MonitorInfo? fallback = before.FirstOrDefault(m => !m.IsDeskSplitVirtual);
         if (fallback is null)
         {
-            log.Report("WARNING: could not determine a physical display to restore as primary on Revert.");
+            log.Report("警告：无法确定撤销时要恢复为主显示器的物理显示器。");
             return (string.Empty, string.Empty);
         }
 
-        log.Report($"No saved pre-split primary; will restore {fallback.DeviceName} on Revert.");
+        log.Report($"没有保存的分屏前主显示器；撤销时将恢复 {fallback.DeviceName}。");
         return (fallback.DeviceName, fallback.FriendlyName);
     }
 
@@ -820,21 +818,21 @@ public static class ApplyService
     {
         if (string.IsNullOrEmpty(targetDevice))
         {
-            log.Report("WARNING: no target display for the primary switch; leaving it unchanged.");
+            log.Report("警告：主显示器切换没有目标显示器；保持不变。");
             return false;
         }
 
         IReadOnlyList<MonitorInfo> current = SafeEnumerate();
         if (current.Count == 0)
         {
-            log.Report("WARNING: could not enumerate displays; primary display left unchanged.");
+            log.Report("警告：无法枚举显示器；主显示器保持不变。");
             return false;
         }
 
         MonitorInfo? livePrimary = current.FirstOrDefault(m => m.IsPrimary);
         if (livePrimary is not null && SameDevice(livePrimary.DeviceName, targetDevice))
         {
-            log.Report($"{description} is already the primary display.");
+            log.Report($"{description} 已经是主显示器。");
             return true;
         }
 
@@ -843,7 +841,7 @@ public static class ApplyService
             snapshot.FirstOrDefault(p => SameDevice(p.DeviceName, targetDevice));
         if (origin is null)
         {
-            log.Report($"WARNING: {targetDevice} is not in the current display set; primary left unchanged.");
+            log.Report($"警告：{targetDevice} 不在当前显示器集合中；主显示器保持不变。");
             return false;
         }
 
@@ -852,14 +850,14 @@ public static class ApplyService
             IReadOnlyList<DisplayArranger.MonitorPlacement> rebased =
                 DisplayArranger.RebaseToPrimary(snapshot, targetDevice);
 
-            log.Report($"Making {description} the primary display — re-basing all " +
-                       $"{rebased.Count} monitor(s) by ({-origin.X},{-origin.Y}):");
+            log.Report($"正在把 {description} 设为主显示器——按 ({-origin.X},{-origin.Y}) 重新定位全部 " +
+                       $"{rebased.Count} 台显示器：");
             DisplayArranger.ApplyLayout(rebased, log.Report);
             return true;
         }
         catch (DisplayArrangeException ex)
         {
-            log.Report("WARNING: primary switch failed — " + ex.Message);
+            log.Report("警告：主显示器切换失败——" + ex.Message);
             return false;
         }
     }
@@ -874,7 +872,7 @@ public static class ApplyService
         var physicalMonitors = SafeEnumerate().Where(m => !m.IsDeskSplitVirtual).ToList();
         if (physicalMonitors.Count == 0)
         {
-            log.Report("WARNING: no physical monitors found; leaving the primary display alone.");
+            log.Report("警告：未找到物理显示器；不调整主显示器。");
             return;
         }
 
@@ -885,26 +883,26 @@ public static class ApplyService
         if (settings is not null)
         {
             target = physicalMonitors.FirstOrDefault(m => SameDevice(m.DeviceName, settings.PreviousPrimaryDevice));
-            if (target is not null) why = "primary before the split";
+            if (target is not null) why = "分屏前的主显示器";
 
             if (target is null && !string.IsNullOrWhiteSpace(settings.PreviousPrimaryFriendlyName))
             {
                 target = physicalMonitors.FirstOrDefault(
                     m => SameDevice(m.FriendlyName, settings.PreviousPrimaryFriendlyName));
-                if (target is not null) why = "primary before the split, matched by name";
+                if (target is not null) why = "分屏前的主显示器（按名称匹配）";
             }
 
             if (target is null)
             {
                 target = physicalMonitors.FirstOrDefault(m => SameDevice(m.DeviceName, settings.PhysicalDevice));
-                if (target is not null) why = "the monitor that was split; no saved previous primary";
+                if (target is not null) why = "被分屏的显示器；没有保存的先前主显示器";
             }
         }
 
         if (target is null)
         {
             target = physicalMonitors.FirstOrDefault(m => m.IsPrimary) ?? physicalMonitors[0];
-            why = "first available physical monitor; no usable saved state";
+            why = "第一台可用的物理显示器；没有可用的保存状态";
         }
 
         SwitchPrimary(target.DeviceName, $"{target.DisplayLabel} ({target.DeviceName}) [{why}]", log);
@@ -917,14 +915,14 @@ public static class ApplyService
         if (request.Resolutions.Count != request.Layout.SegmentCount)
         {
             throw new ApplyException(
-                $"Layout '{request.Layout.Name}' needs {request.Layout.SegmentCount} segment resolutions, " +
-                $"got {request.Resolutions.Count}.");
+                $"布局“{request.Layout.Name}”需要 {request.Layout.SegmentCount} 个分区分辨率，" +
+                $"实际为 {request.Resolutions.Count} 个。");
         }
         if (request.Layout.SegmentCount > DriverClient.DESKSPLIT_MAX_MONITORS)
         {
             throw new ApplyException(
-                $"Layout '{request.Layout.Name}' needs {request.Layout.SegmentCount} monitors but the driver " +
-                $"supports at most {DriverClient.DESKSPLIT_MAX_MONITORS}.");
+                $"布局“{request.Layout.Name}”需要 {request.Layout.SegmentCount} 台显示器，但驱动" +
+                $"最多支持 {DriverClient.DESKSPLIT_MAX_MONITORS} 台。");
         }
         for (int i = 0; i < request.Resolutions.Count; i++)
         {
@@ -933,12 +931,12 @@ public static class ApplyService
                 h < MinSegmentDimension || h > MaxSegmentDimension)
             {
                 throw new ApplyException(
-                    $"Segment {i + 1} resolution {w}x{h} is out of range " +
-                    $"({MinSegmentDimension}..{MaxSegmentDimension}).");
+                    $"分区 {i + 1} 的分辨率 {w}x{h} 超出范围 " +
+                    $"（{MinSegmentDimension}..{MaxSegmentDimension}）。");
             }
         }
         if (request.Physical.IsDeskSplitVirtual)
-            throw new ApplyException("The selected monitor is a DesktopSplitter virtual monitor; pick a physical one.");
+            throw new ApplyException("所选显示器是 DesktopSplitter 虚拟显示器；请选择一台物理显示器。");
     }
 
     /// <summary>
@@ -961,16 +959,16 @@ public static class ApplyService
         {
             if (TryMapByEdid(arrived, segmentCount, out List<MonitorInfo> mapped, out reason))
             {
-                log.Report("Mapped segments to virtual monitors by EDID serial (driver monitor index).");
+                log.Report("已按 EDID 序列号（驱动显示器索引）把分区映射到虚拟显示器。");
                 for (int i = 0; i < mapped.Count; i++)
                 {
                     EdidInfo edid = mapped[i].Edid!;
-                    log.Report($"  Segment {i + 1} -> {mapped[i].DeviceName} " +
-                               $"(serial 0x{edid.SerialNumber:X8}, product 0x{edid.ProductCode:X4})");
+                    log.Report($"  分区 {i + 1} -> {mapped[i].DeviceName} " +
+                               $"（序列号 0x{edid.SerialNumber:X8}，产品代码 0x{edid.ProductCode:X4}）");
                     if (edid.ProductCode != i)
                     {
-                        log.Report($"  Note: EDID product code 0x{edid.ProductCode:X4} does not match monitor " +
-                                   $"index {i}; trusting the serial.");
+                        log.Report($"  注意：EDID 产品代码 0x{edid.ProductCode:X4} 与显示器索引 {i} 不符；" +
+                                   "以序列号为准。");
                     }
                 }
                 return mapped;
@@ -987,8 +985,8 @@ public static class ApplyService
             if (refreshed.Count == arrived.Count) arrived = refreshed;
         }
 
-        log.Report($"WARNING: {reason} — falling back to positional \\\\.\\DISPLAYn-order mapping. " +
-                   "Segments may end up on the wrong virtual monitor.");
+        log.Report($"警告：{reason}——回退到按 \\\\.\\DISPLAYn 位置顺序映射。" +
+                   "分区可能会落到错误的虚拟显示器上。");
         return arrived;
     }
 
@@ -1019,10 +1017,10 @@ public static class ApplyService
 
         mapped = new List<MonitorInfo>();
         reason = duplicates
-            ? "two virtual monitors reported the same driver index"
+            ? "两台虚拟显示器报告了相同的驱动索引"
             : byIndex.Count == 0
-                ? "no EDID serial in the DesktopSplitter range could be read"
-                : $"only {byIndex.Count} of {segmentCount} monitors reported a usable driver index";
+                ? "读不到 DesktopSplitter 范围内的 EDID 序列号"
+                : $"{segmentCount} 台显示器中只有 {byIndex.Count} 台报告了可用的驱动索引";
         return false;
     }
 
@@ -1048,9 +1046,9 @@ public static class ApplyService
         }
 
         throw new ApplyException(
-            $"Timed out after {MonitorArrivalTimeout.TotalSeconds:0}s waiting for the virtual monitors: " +
-            $"expected {expected}, saw {found.Count}. Is the DesktopSplitter driver installed and started " +
-            "(Device Manager -> Display adapters)?");
+            $"等待虚拟显示器超时（{MonitorArrivalTimeout.TotalSeconds:0} 秒）：" +
+            $"应有 {expected} 台，实际看到 {found.Count} 台。DesktopSplitter 驱动是否已安装并启动" +
+            "（设备管理器 > 显示适配器）？");
     }
 
     private static IReadOnlyList<MonitorInfo> SafeEnumerate()
@@ -1073,14 +1071,14 @@ public static class ApplyService
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
         {
             throw new ApplyException(
-                $"Access denied writing {ConfigPath}.{Environment.NewLine}" +
-                "Run DesktopSplitter as administrator once — it will create " +
-                $"{ConfigDirectory} and grant the current user write access; " +
-                "subsequent runs do not need elevation.", ex);
+                $"写入 {ConfigPath} 时被拒绝访问。{Environment.NewLine}" +
+                "请以管理员身份运行一次 DesktopSplitter——它会创建 " +
+                $"{ConfigDirectory} 并授予当前用户写入权限；" +
+                "之后运行不再需要提权。", ex);
         }
         catch (IOException ex)
         {
-            throw new ApplyException($"Could not write {ConfigPath}: {ex.Message}", ex);
+            throw new ApplyException($"无法写入 {ConfigPath}：{ex.Message}", ex);
         }
     }
 }

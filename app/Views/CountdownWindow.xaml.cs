@@ -104,7 +104,7 @@ public partial class CountdownWindow : Window
         if (remaining <= 0 && !_answered)
         {
             _timer.Stop();
-            CountdownCaption.Text = "reverting…";
+            CountdownCaption.Text = "正在撤销…";
             KeepButton.IsEnabled = false;
             RevertButton.IsEnabled = false;
         }
@@ -131,7 +131,7 @@ public partial class CountdownWindow : Window
 
         KeepButton.IsEnabled = false;
         RevertButton.IsEnabled = false;
-        CountdownCaption.Text = keep ? "keeping…" : "reverting…";
+        CountdownCaption.Text = keep ? "正在保留…" : "正在撤销…";
 
         Answered?.Invoke(keep);
     }

@@ -1,4 +1,4 @@
-#include "Wizard.h"
+﻿#include "Wizard.h"
 #include "InstallEngine.h"
 #include "Edition.h"
 #include "Payload.h"
@@ -124,10 +124,10 @@ namespace
         const bool Un = (W->Mode == WizardMode::Uninstall);
         switch (Page)
         {
-        case WizardPage::Welcome:  return Un ? L"Remove DesktopSplitter" : L"Welcome to DesktopSplitter";
-        case WizardPage::Options:  return Un ? L"Removal options" : L"Installation options";
-        case WizardPage::Progress: return Un ? L"Removing" : L"Installing";
-        case WizardPage::Finish:   return Un ? L"Removal complete" : L"Installation complete";
+        case WizardPage::Welcome:  return Un ? L"卸载 DesktopSplitter" : L"欢迎使用 DesktopSplitter";
+        case WizardPage::Options:  return Un ? L"卸载选项" : L"安装选项";
+        case WizardPage::Progress: return Un ? L"正在卸载" : L"正在安装";
+        case WizardPage::Finish:   return Un ? L"卸载完成" : L"安装完成";
         default:                   return L"";
         }
     }
@@ -138,14 +138,14 @@ namespace
         switch (Page)
         {
         case WizardPage::Welcome:
-            return Un ? L"This will remove DesktopSplitter and its display driver."
-                      : L"Split one monitor into several that Windows treats as separate displays.";
+            return Un ? L"这将卸载 DesktopSplitter 及其显示驱动程序。"
+                      : L"把一台显示器拆分成多台，Windows 会将它们识别为独立的显示器。";
         case WizardPage::Options:
-            return Un ? L"Choose what to remove." : L"Choose where to install and what to create.";
+            return Un ? L"选择要卸载的内容。" : L"选择安装位置和要创建的快捷方式。";
         case WizardPage::Progress:
-            return L"This can take a minute. Your screen may flicker.";
+            return L"这可能需要一分钟左右，期间屏幕可能会闪烁。";
         case WizardPage::Finish:
-            return Un ? L"DesktopSplitter has been removed." : L"DesktopSplitter is ready to use.";
+            return Un ? L"DesktopSplitter 已卸载。" : L"DesktopSplitter 已准备就绪。";
         default:
             return L"";
         }
@@ -170,28 +170,28 @@ namespace
 
         // --- Options
         int Y = ContentTop;
-        MakeControl(W, L"STATIC", L"Install location:", SS_LEFT, M, Y, InnerW, 16, 0);
+        MakeControl(W, L"STATIC", L"安装位置：", SS_LEFT, M, Y, InnerW, 16, 0);
         Y += 20;
         W->EditDir = MakeControl(W, L"EDIT", W->Options.InstallDir,
                                  WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, M, Y, InnerW - 84, 24,
                                  IDC_EDIT_INSTALLDIR);
-        W->BtnBrowse = MakeControl(W, L"BUTTON", L"Browse...", WS_TABSTOP | BS_PUSHBUTTON,
+        W->BtnBrowse = MakeControl(W, L"BUTTON", L"浏览...", WS_TABSTOP | BS_PUSHBUTTON,
                                    M + InnerW - 78, Y, 78, 24, IDC_BTN_BROWSE);
         Y += 38;
-        W->ChkDesktop = MakeControl(W, L"BUTTON", L"Create a desktop shortcut",
+        W->ChkDesktop = MakeControl(W, L"BUTTON", L"创建桌面快捷方式",
                                     WS_TABSTOP | BS_AUTOCHECKBOX, M, Y, InnerW, 20, IDC_CHK_DESKTOP_SHORTCUT);
         Y += 24;
-        W->ChkStartMenu = MakeControl(W, L"BUTTON", L"Create a Start menu shortcut",
+        W->ChkStartMenu = MakeControl(W, L"BUTTON", L"创建开始菜单快捷方式",
                                       WS_TABSTOP | BS_AUTOCHECKBOX, M, Y, InnerW, 20, IDC_CHK_STARTMENU_SHORTCUT);
         Y += 30;
-        W->ChkHide = MakeControl(W, L"BUTTON", L"Hide the physical display when splitting (experimental)",
+        W->ChkHide = MakeControl(W, L"BUTTON", L"拆分时隐藏物理显示器（实验性功能）",
                                  WS_TABSTOP | BS_AUTOCHECKBOX, M, Y, InnerW, 20, IDC_CHK_HIDE_PHYSICAL);
         Y += 22;
         W->HideNote = MakeControl(W, L"STATIC", L"", SS_LEFT, M + 18, Y, InnerW - 18, 32, IDC_STATIC_HIDE_NOTE);
 
         // Uninstall-only option shares the Options page.
         W->ChkRemoveCert = MakeControl(W, L"BUTTON",
-                                       L"Also remove the publisher certificate from this PC",
+                                       L"同时从此电脑中删除发布者证书",
                                        WS_TABSTOP | BS_AUTOCHECKBOX, M, ContentTop + 20, InnerW, 20,
                                        IDC_CHK_REMOVE_CERT);
 
@@ -204,17 +204,17 @@ namespace
         SendMessageW(W->Progress, PBM_SETRANGE32, 0, 100);
 
         // --- Finish
-        W->ChkLaunch = MakeControl(W, L"BUTTON", L"Launch DesktopSplitter",
+        W->ChkLaunch = MakeControl(W, L"BUTTON", L"启动 DesktopSplitter",
                                    WS_TABSTOP | BS_AUTOCHECKBOX, M, ContentTop + 110, InnerW, 20, IDC_CHK_LAUNCH);
 
         // --- buttons (always visible; LayoutChrome positions them from the
         //     REAL client rect, so these coordinates are only a starting point)
         const int BtnY = kBaseHeight - kBaseButtonBarHeight + 10;
-        W->BtnBack = MakeControl(W, L"BUTTON", L"< Back", WS_TABSTOP | BS_PUSHBUTTON | WS_VISIBLE,
+        W->BtnBack = MakeControl(W, L"BUTTON", L"< 上一步", WS_TABSTOP | BS_PUSHBUTTON | WS_VISIBLE,
                                  Width - 3 * 88 - M, BtnY, 84, 26, IDC_BTN_BACK);
-        W->BtnNext = MakeControl(W, L"BUTTON", L"Next >", WS_TABSTOP | BS_DEFPUSHBUTTON | WS_VISIBLE,
+        W->BtnNext = MakeControl(W, L"BUTTON", L"下一步 >", WS_TABSTOP | BS_DEFPUSHBUTTON | WS_VISIBLE,
                                  Width - 2 * 88 - M, BtnY, 84, 26, IDC_BTN_NEXT);
-        W->BtnCancel = MakeControl(W, L"BUTTON", L"Cancel", WS_TABSTOP | BS_PUSHBUTTON | WS_VISIBLE,
+        W->BtnCancel = MakeControl(W, L"BUTTON", L"取消", WS_TABSTOP | BS_PUSHBUTTON | WS_VISIBLE,
                                    Width - 88 - M, BtnY, 84, 26, IDC_BTN_CANCEL);
 
         CheckDlgButton(W->Main, IDC_CHK_DESKTOP_SHORTCUT, W->Options.DesktopShortcut ? BST_CHECKED : BST_UNCHECKED);
@@ -227,15 +227,15 @@ namespace
         {
             EnableWindow(W->ChkHide, TRUE);
             SetWindowTextW(W->HideNote,
-                           L"Supported on this edition. The app hides the real monitor while a split is active.");
+                           L"此版本支持该功能。拆分生效期间，应用会隐藏真实显示器。");
         }
         else
         {
             EnableWindow(W->ChkHide, FALSE);
             CheckDlgButton(W->Main, IDC_CHK_HIDE_PHYSICAL, BST_UNCHECKED);
             SetWindowTextW(W->HideNote,
-                           L"Requires Windows Pro for Workstations / Enterprise. "
-                           L"This PC runs an edition that cannot hide a display.");
+                           L"需要 Windows Pro for Workstations / Enterprise 版本。"
+                           L"本机当前的 Windows 版本无法隐藏显示器。");
         }
     }
 
@@ -309,30 +309,30 @@ namespace
             if (W->Mode == WizardMode::Uninstall)
             {
                 StringCchPrintfW(Text, ARRAYSIZE(Text),
-                    L"This will remove:\r\n\r\n"
-                    L"    \x2022  The DesktopSplitter app and compositor\r\n"
-                    L"    \x2022  The virtual display driver and its device\r\n"
-                    L"    \x2022  Shortcuts and settings\r\n\r\n"
-                    L"Any active split is undone first, so your desktop returns to the real monitor.\r\n\r\n"
-                    L"Installed version: %s", Have ? Version : L"(unknown)");
+                    L"将卸载以下内容：\r\n\r\n"
+                    L"    \x2022  DesktopSplitter 应用及合成器\r\n"
+                    L"    \x2022  虚拟显示驱动及其设备\r\n"
+                    L"    \x2022  快捷方式和设置\r\n\r\n"
+                    L"将先撤销当前生效的拆分，桌面会恢复到真实显示器。\r\n\r\n"
+                    L"已安装版本：%s", Have ? Version : L"(未知)");
             }
             else if (Have)
             {
                 StringCchPrintfW(Text, ARRAYSIZE(Text),
-                    L"DesktopSplitter %s is already installed in\r\n%s\r\n\r\n"
-                    L"This will upgrade it to version %s, keeping your settings.\r\n\r\n"
-                    L"Administrator rights are required because a display driver is installed.",
+                    L"DesktopSplitter %s 已安装在\r\n%s\r\n\r\n"
+                    L"将升级到版本 %s，并保留现有设置。\r\n\r\n"
+                    L"安装显示驱动需要管理员权限。",
                     Version, Installed, kProductVersion);
             }
             else
             {
                 StringCchPrintfW(Text, ARRAYSIZE(Text),
-                    L"Version %s\r\n\r\n"
-                    L"DesktopSplitter turns one monitor into up to four that Windows treats as\r\n"
-                    L"completely separate displays, so windows snap and maximise to each part.\r\n\r\n"
-                    L"This installs a virtual display driver, so Windows will ask for administrator\r\n"
-                    L"rights and may show a driver warning.\r\n\r\n"
-                    L"Click Next to continue.", kProductVersion);
+                    L"版本 %s\r\n\r\n"
+                    L"DesktopSplitter 能把一台显示器变成最多四台，Windows 会将它们视为\r\n"
+                    L"完全独立的显示器，窗口可以吸附并最大化到每个部分。\r\n\r\n"
+                    L"本程序将安装虚拟显示驱动，因此 Windows 会要求管理员权限，\r\n"
+                    L"并可能显示驱动程序警告。\r\n\r\n"
+                    L"点击“下一步”继续。", kProductVersion);
             }
             SetWindowTextW(W->Body, Text);
         }
@@ -345,23 +345,23 @@ namespace
                 if (W->Mode == WizardMode::Uninstall)
                 {
                     StringCchCopyW(Text, ARRAYSIZE(Text),
-                        L"DesktopSplitter has been removed from this PC.\r\n\r\n"
-                        L"If a restart was mentioned above, please restart to finish cleaning up "
-                        L"the display driver.");
+                        L"DesktopSplitter 已从此电脑中卸载。\r\n\r\n"
+                        L"如上文提到需要重启，请重启电脑以完成"
+                        L"显示驱动的清理。");
                 }
                 else
                 {
                     StringCchPrintfW(Text, ARRAYSIZE(Text),
-                        L"DesktopSplitter has been installed to\r\n%s\r\n\r\n"
-                        L"Open it to pick a monitor and a layout, then click Apply.",
+                        L"DesktopSplitter 已安装到\r\n%s\r\n\r\n"
+                        L"打开它，选择显示器和布局，然后点击“应用”。",
                         W->Options.InstallDir);
                 }
             }
             else
             {
                 StringCchPrintfW(Text, ARRAYSIZE(Text),
-                    L"Setup did not complete (code %d).\r\n\r\n"
-                    L"The log on the previous page shows which step failed. Nothing else was changed.",
+                    L"安装未完成（错误代码 %d）。\r\n\r\n"
+                    L"上一页的日志显示了失败的步骤，其他内容未做任何更改。",
                     W->Result);
             }
             SetWindowTextW(W->Body, Text);
@@ -372,9 +372,9 @@ namespace
         EnableWindow(W->BtnCancel, Finish ? FALSE : TRUE);
 
         SetWindowTextW(W->BtnNext,
-                       Finish ? L"Finish"
-                              : (Options ? (W->Mode == WizardMode::Uninstall ? L"Remove" : L"Install")
-                                         : L"Next >"));
+                       Finish ? L"完成"
+                              : (Options ? (W->Mode == WizardMode::Uninstall ? L"卸载" : L"安装")
+                                         : L"下一步 >"));
 
         InvalidateRect(W->Main, nullptr, TRUE);
     }
@@ -447,26 +447,26 @@ namespace
     {
         wchar_t Body[1400];
         StringCchPrintfW(Body, ARRAYSIZE(Body),
-            L"Windows does not trust the publisher of this display driver yet.\n\n"
-            L"Publisher:\t%s\n"
-            L"Issued by:\t%s%s\n"
-            L"Valid:\t%s  to  %s\n"
-            L"SHA-1:\t%s\n\n"
-            L"To install the driver, this PC must be told to trust that publisher. "
-            L"Continuing adds the certificate above to the machine's Trusted Root "
-            L"Certification Authorities and Trusted Publishers stores.\n\n"
-            L"This PC will then accept ANY software signed by that publisher \x2014 not just "
-            L"this driver. Only continue if you obtained this installer from a source you "
-            L"trust and the SHA-1 above matches the one they published.\n\n"
-            L"You can undo this later by removing DesktopSplitter and ticking "
-            L"\"Also remove the publisher certificate\".",
+            L"Windows 尚未信任此显示驱动的发布者。\n\n"
+            L"发布者：\t%s\n"
+            L"颁发者：\t%s%s\n"
+            L"有效期：\t%s  至  %s\n"
+            L"SHA-1：\t%s\n\n"
+            L"要安装此驱动，必须让此电脑信任该发布者。"
+            L"继续操作会把上面的证书添加到本机的 Trusted Root "
+            L"Certification Authorities 和 Trusted Publishers 存储中。\n\n"
+            L"此后，本电脑将接受该发布者签名的所有软件，而不仅仅是"
+            L"此驱动。只有当安装程序来自可信来源，且上面的 SHA-1 与发布方"
+            L"公布的一致时，才应继续。\n\n"
+            L"以后可以卸载 DesktopSplitter 并勾选"
+            L"“同时从此电脑中删除发布者证书”来撤销此操作。",
             Summary.SubjectName,
             Summary.IssuerName,
-            Summary.SelfSigned ? L"  (self-signed)" : L"",
+            Summary.SelfSigned ? L"  （自签名）" : L"",
             Summary.NotBefore, Summary.NotAfter,
             Summary.Thumbprint);
 
-        const int Answer = MessageBoxW(W->Main, Body, L"Trust this publisher?",
+        const int Answer = MessageBoxW(W->Main, Body, L"信任此发布者？",
                                        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
         return Answer == IDYES;
     }
@@ -502,7 +502,7 @@ namespace
 
         BROWSEINFOW Info = {};
         Info.hwndOwner = W->Main;
-        Info.lpszTitle = L"Choose where to install DesktopSplitter";
+        Info.lpszTitle = L"选择 DesktopSplitter 的安装位置";
         Info.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
         LPITEMIDLIST List = SHBrowseForFolderW(&Info);
@@ -584,8 +584,8 @@ namespace
             case IDC_BTN_CANCEL:
                 if (W->Running)
                 {
-                    if (MessageBoxW(Window, L"Setup is part-way through. Cancel anyway?",
-                                    L"DesktopSplitter Setup",
+                    if (MessageBoxW(Window, L"安装已进行到一半，仍要取消吗？",
+                                    L"DesktopSplitter 安装程序",
                                     MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) == IDYES)
                     {
                         W->Cancelled = true;
@@ -618,7 +618,7 @@ namespace
         case WM_WIZ_ERROR:
         {
             wchar_t Line[1100];
-            StringCchPrintfW(Line, ARRAYSIZE(Line), L"      ERROR: %s", reinterpret_cast<const wchar_t*>(lParam));
+            StringCchPrintfW(Line, ARRAYSIZE(Line), L"      错误: %s", reinterpret_cast<const wchar_t*>(lParam));
             AppendLog(W, Line);
             return 0;
         }
@@ -679,8 +679,8 @@ namespace
 
         W->Main = CreateWindowExW(0, kWindowClass,
                                   W->Mode == WizardMode::Uninstall
-                                      ? L"Remove DesktopSplitter"
-                                      : L"DesktopSplitter Setup",
+                                      ? L"卸载 DesktopSplitter"
+                                      : L"DesktopSplitter 安装程序",
                                   Style, X, Y, Width, Height,
                                   nullptr, nullptr, W->Instance, nullptr);
         if (W->Main == nullptr)
@@ -823,10 +823,10 @@ namespace DeskSplit
         SetEditionOverrideForTest(nullptr);
         GetEditionInfo(&Real);
 
-        wprintf(L"Machine edition: EditionID=%s ProductName=%s %s build %u\n",
+        wprintf(L"本机版本: EditionID=%s ProductName=%s %s 内部版本 %u\n",
                 Real.EditionId, Real.ProductName, Real.DisplayVersion, Real.Build);
-        wprintf(L"Specialized display supported: %s\n\n",
-                Real.SupportsSpecializedDisplay ? L"yes" : L"no");
+        wprintf(L"支持专用显示模式: %s\n\n",
+                Real.SupportsSpecializedDisplay ? L"是" : L"否");
 
         // Asserts the always-present chrome: the three wizard buttons must be
         // visible, non-degenerate, inside the client area, and correctly
@@ -841,9 +841,9 @@ namespace DeskSplit
             struct Button { HWND Handle; const wchar_t* Name; };
             const Button Buttons[] =
             {
-                { W->BtnBack,   L"Back" },
-                { W->BtnNext,   L"Next" },
-                { W->BtnCancel, L"Cancel" },
+                { W->BtnBack,   L"上一步" },
+                { W->BtnNext,   L"下一步" },
+                { W->BtnCancel, L"取消" },
             };
 
             for (const Button& Btn : Buttons)
@@ -851,7 +851,7 @@ namespace DeskSplit
                 wchar_t Message[256];
 
                 StringCchPrintfW(Message, ARRAYSIZE(Message),
-                                 L"page %d: %s button exists and is WS_VISIBLE",
+                                 L"第 %d 页: %s 按钮存在且带有 WS_VISIBLE",
                                  static_cast<int>(Page), Btn.Name);
                 Check(Message, Btn.Handle != nullptr && IsShown(Btn.Handle));
 
@@ -868,7 +868,7 @@ namespace DeskSplit
                 const int ButtonHeight = BottomRight.y - TopLeft.y;
 
                 StringCchPrintfW(Message, ARRAYSIZE(Message),
-                                 L"page %d: %s button has a non-zero size (%dx%d)",
+                                 L"第 %d 页: %s 按钮尺寸非零 (%dx%d)",
                                  static_cast<int>(Page), Btn.Name, ButtonWidth, ButtonHeight);
                 Check(Message, ButtonWidth > 0 && ButtonHeight > 0);
 
@@ -876,8 +876,8 @@ namespace DeskSplit
                                     BottomRight.x <= Client.right &&
                                     BottomRight.y <= Client.bottom;
                 StringCchPrintfW(Message, ARRAYSIZE(Message),
-                                 L"page %d: %s button lies inside the client rect "
-                                 L"(%d,%d)-(%d,%d) within %dx%d",
+                                 L"第 %d 页: %s 按钮位于客户区内 "
+                                 L"(%d,%d)-(%d,%d)，范围 %dx%d",
                                  static_cast<int>(Page), Btn.Name,
                                  TopLeft.x, TopLeft.y, BottomRight.x, BottomRight.y,
                                  Client.right, Client.bottom);
@@ -887,14 +887,14 @@ namespace DeskSplit
             wchar_t NextLabel[64] = {};
             GetWindowTextW(W->BtnNext, NextLabel, ARRAYSIZE(NextLabel));
             const wchar_t* Expected =
-                (Page == WizardPage::Finish) ? L"Finish"
+                (Page == WizardPage::Finish) ? L"完成"
                 : (Page == WizardPage::Options)
-                      ? (W->Mode == WizardMode::Uninstall ? L"Remove" : L"Install")
-                      : L"Next >";
+                      ? (W->Mode == WizardMode::Uninstall ? L"卸载" : L"安装")
+                      : L"下一步 >";
 
             wchar_t Message[256];
             StringCchPrintfW(Message, ARRAYSIZE(Message),
-                             L"page %d: Next button reads '%s' (expected '%s')",
+                             L"第 %d 页: 下一步按钮文字为 '%s'（期望 '%s')",
                              static_cast<int>(Page), NextLabel, Expected);
             Check(Message, wcscmp(NextLabel, Expected) == 0);
 
@@ -902,7 +902,7 @@ namespace DeskSplit
             wchar_t Header[256] = {};
             GetWindowTextW(W->Header, Header, ARRAYSIZE(Header));
             StringCchPrintfW(Message, ARRAYSIZE(Message),
-                             L"page %d: header is visible and non-empty",
+                             L"第 %d 页: 标题可见且非空",
                              static_cast<int>(Page));
             Check(Message, IsShown(W->Header) && Header[0] != L'\0');
         };
@@ -933,13 +933,13 @@ namespace DeskSplit
 
             if (!CreateWizardWindow(&W, false))
             {
-                wprintf(L"  [FAIL] could not create the hidden wizard window\n");
+                wprintf(L"  [FAIL] 无法创建隐藏的向导窗口\n");
                 g_Wizard = nullptr;
                 return 1;
             }
 
-            const wchar_t* Label = TestCase.Edition ? TestCase.Edition : L"(real registry value)";
-            wprintf(L"Edition '%s':\n", Label);
+            const wchar_t* Label = TestCase.Edition ? TestCase.Edition : L"(注册表实际值)";
+            wprintf(L"版本 '%s':\n", Label);
 
             const bool Enabled = IsWindowEnabled(W.ChkHide) != FALSE;
             wchar_t Note[256] = {};
@@ -947,16 +947,16 @@ namespace DeskSplit
 
             wchar_t Message[256];
             StringCchPrintfW(Message, ARRAYSIZE(Message),
-                             L"hide-physical-display checkbox %s (expected %s)",
-                             Enabled ? L"ENABLED" : L"disabled",
-                             TestCase.ExpectEnabled ? L"ENABLED" : L"disabled");
+                             L"隐藏物理显示器复选框 %s（期望 %s）",
+                             Enabled ? L"已启用" : L"已禁用",
+                             TestCase.ExpectEnabled ? L"已启用" : L"已禁用");
             Check(Message, Enabled == TestCase.ExpectEnabled);
 
             if (!TestCase.ExpectEnabled)
             {
-                Check(L"disabled note mentions the required editions",
+                Check(L"禁用说明提到了所需的版本",
                       wcsstr(Note, L"Pro for Workstations") != nullptr);
-                Check(L"checkbox is forced unchecked when unsupported",
+                Check(L"不支持时复选框被强制取消勾选",
                       IsDlgButtonChecked(W.Main, IDC_CHK_HIDE_PHYSICAL) == BST_UNCHECKED);
             }
 
@@ -980,23 +980,23 @@ namespace DeskSplit
                 // looked at page-specific controls - so it passed regardless.
                 CheckChrome(&W, Page, Check);
 
-                wprintf(L"    page %d '%s' body=%d options=%d progress=%d\n",
+                wprintf(L"    第 %d 页 '%s' 正文=%d 选项=%d 进度=%d\n",
                         static_cast<int>(Page), Header, BodyUp, OptionsUp, ProgressUp);
 
                 switch (Page)
                 {
                 case WizardPage::Welcome:
-                    Check(L"welcome shows the body text", BodyUp && !OptionsUp && !ProgressUp);
+                    Check(L"欢迎页显示正文", BodyUp && !OptionsUp && !ProgressUp);
                     break;
                 case WizardPage::Options:
-                    Check(L"options shows the install-dir controls", OptionsUp && !ProgressUp);
+                    Check(L"选项页显示安装目录控件", OptionsUp && !ProgressUp);
                     break;
                 case WizardPage::Progress:
-                    Check(L"progress shows the progress bar and log",
+                    Check(L"进度页显示进度条和日志",
                           ProgressUp && IsShown(W.List));
                     break;
                 case WizardPage::Finish:
-                    Check(L"finish shows the body text", BodyUp && !ProgressUp);
+                    Check(L"完成页显示正文", BodyUp && !ProgressUp);
                     break;
                 default:
                     break;
@@ -1006,12 +1006,12 @@ namespace DeskSplit
             // Install dir must be non-empty and absolute.
             wchar_t Dir[MAX_PATH] = {};
             GetWindowTextW(W.EditDir, Dir, ARRAYSIZE(Dir));
-            Check(L"install directory defaults to an absolute path",
+            Check(L"安装目录默认为绝对路径",
                   Dir[0] != L'\0' && Dir[1] == L':');
 
-            Check(L"desktop shortcut is checked by default",
+            Check(L"桌面快捷方式默认勾选",
                   IsDlgButtonChecked(W.Main, IDC_CHK_DESKTOP_SHORTCUT) == BST_CHECKED);
-            Check(L"start menu shortcut is checked by default",
+            Check(L"开始菜单快捷方式默认勾选",
                   IsDlgButtonChecked(W.Main, IDC_CHK_STARTMENU_SHORTCUT) == BST_CHECKED);
 
             DestroyWindow(W.Main);
@@ -1041,7 +1041,7 @@ namespace DeskSplit
 
             if (!CreateWizardWindow(&W, false))
             {
-                wprintf(L"  [FAIL] could not create the wizard at %u DPI\n", Dpi);
+                wprintf(L"  [FAIL] 无法在 %u DPI 下创建向导\n", Dpi);
                 g_Wizard = nullptr;
                 g_TestDpiOverride = 0;
                 return 1;
@@ -1049,7 +1049,7 @@ namespace DeskSplit
 
             RECT Client = {};
             GetClientRect(W.Main, &Client);
-            wprintf(L"DPI %u (%u%% scaling), client %dx%d:\n",
+            wprintf(L"DPI %u（缩放 %u%%），客户区 %dx%d:\n",
                     Dpi, MulDiv(Dpi, 100, 96), Client.right, Client.bottom);
 
             const WizardPage Pages[] = { WizardPage::Welcome, WizardPage::Options,
@@ -1078,8 +1078,8 @@ namespace DeskSplit
 
         g_TestDpiOverride = 0;
 
-        wprintf(L"%s (%d failure%s)\n", Failures == 0 ? L"SELFTEST PASSED" : L"SELFTEST FAILED",
-                Failures, Failures == 1 ? L"" : L"s");
+        wprintf(L"%s（%d 处失败%s）\n", Failures == 0 ? L"自检通过" : L"自检未通过",
+                Failures, Failures == 1 ? L"" : L"");
         return Failures == 0 ? 0 : 1;
     }
 }

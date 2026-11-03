@@ -98,6 +98,21 @@ foreach ($item in $resolved) {
     Copy-Item -LiteralPath $item.Path -Destination (Join-Path $OutDir $item.Target) -Force
 }
 
+# ======================= inbox repair file =================================
+# WUDFRD.inf is an inbox Windows file: it supplies the UMDF reflector service
+# association that this driver package (and every UMDF driver) Includes. On a
+# machine where it has gone missing from %WINDIR%\INF, device installation
+# fails with 0xe0000219 ("a function driver was not specified") even though
+# the package itself is fine. The installer embeds a copy taken from this
+# build machine's own %WINDIR%\INF and restores it only when the target
+# machine lacks it (see EnsureWufrdInf in InstallEngine.cpp).
+$wufrdSource = Join-Path $env:WINDIR 'INF\WUDFRD.inf'
+if (-not (Test-Path $wufrdSource)) {
+    Fail "inbox WUDFRD.inf not found at $wufrdSource - cannot stage the repair copy."
+}
+Copy-Item -LiteralPath $wufrdSource -Destination (Join-Path $OutDir 'WUDFRD.inf') -Force
+Write-Host "stage-payload : staged inbox repair copy of WUDFRD.inf"
+
 # =========================== product files =================================
 
 # --- control app: self-contained single file ---

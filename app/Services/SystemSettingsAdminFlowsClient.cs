@@ -75,15 +75,14 @@ public static class SystemSettingsAdminFlowsClient
     {
         if (!IsAvailable)
         {
-            return new AdminFlowResult(false, $"{ExecutablePath} not found.") { NotAttempted = true };
+            return new AdminFlowResult(false, $"找不到 {ExecutablePath}。") { NotAttempted = true };
         }
 
         IReadOnlyList<string>? args = BuildArguments(monitor, enable);
         if (args is null)
         {
             return new AdminFlowResult(false,
-                $"No identity hash has been learned for {monitor.DisplayLabel} yet, so the one-click " +
-                "route is not available for it.")
+                $"尚未学到 {monitor.DisplayLabel} 的标识哈希，因此无法对它使用一键方式。")
             { NotAttempted = true };
         }
 
@@ -95,29 +94,30 @@ public static class SystemSettingsAdminFlowsClient
         };
         foreach (string a in args) psi.ArgumentList.Add(a);
 
-        log.Report($"Running: {ExecutableName} {string.Join(" ", args)}   (elevated — expect a UAC prompt)");
+        log.Report($"正在运行：{ExecutableName} {string.Join(" ", args)}   （已提权——会出现 UAC 提示）");
 
         try
         {
             using Process? process = Process.Start(psi);
             if (process is null)
-                return new AdminFlowResult(false, "The helper did not start.");
+                return new AdminFlowResult(false, "助手程序未能启动。");
 
             if (!process.WaitForExit((int)TimeSpan.FromSeconds(60).TotalMilliseconds))
-                return new AdminFlowResult(false, "The helper did not finish within 60 seconds.");
+                return new AdminFlowResult(false, "助手程序未在 60 秒内完成。");
 
             return process.ExitCode == 0
                 ? new AdminFlowResult(true,
-                    $"{monitor.DisplayLabel} {(enable ? "removed from" : "restored to")} the desktop.")
-                : new AdminFlowResult(false, $"The helper exited with code {process.ExitCode}.");
+                    enable ? $"已把 {monitor.DisplayLabel} 从桌面移除。"
+                           : $"已把 {monitor.DisplayLabel} 恢复到桌面。")
+                : new AdminFlowResult(false, $"助手程序退出，代码 {process.ExitCode}。");
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)   // ERROR_CANCELLED
         {
-            return new AdminFlowResult(false, "The elevation prompt was dismissed.");
+            return new AdminFlowResult(false, "提权提示被取消。");
         }
         catch (Exception ex)
         {
-            return new AdminFlowResult(false, $"Could not run {ExecutableName}: {ex.Message}");
+            return new AdminFlowResult(false, $"无法运行 {ExecutableName}：{ex.Message}");
         }
     }
 }

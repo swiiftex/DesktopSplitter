@@ -1,4 +1,4 @@
-#include "ProductFiles.h"
+﻿#include "ProductFiles.h"
 #include "Payload.h"
 #include "resource.h"
 
@@ -309,7 +309,7 @@ namespace DeskSplit
             wchar_t Link[MAX_PATH] = {};
             if (GetShortcutPath(CSIDL_COMMON_DESKTOPDIRECTORY, nullptr, L"DesktopSplitter.lnk", Link, ARRAYSIZE(Link)))
             {
-                const HRESULT hr = WriteShortcut(Link, AppPath, pOptions->InstallDir, L"Split one monitor into several");
+                const HRESULT hr = WriteShortcut(Link, AppPath, pOptions->InstallDir, L"将一台显示器拆分为多台");
                 if (FAILED(hr))
                 {
                     Result = static_cast<DWORD>(hr);
@@ -322,7 +322,7 @@ namespace DeskSplit
             wchar_t Link[MAX_PATH] = {};
             if (GetShortcutPath(CSIDL_COMMON_PROGRAMS, kStartMenuFolder, L"DesktopSplitter.lnk", Link, ARRAYSIZE(Link)))
             {
-                const HRESULT hr = WriteShortcut(Link, AppPath, pOptions->InstallDir, L"Split one monitor into several");
+                const HRESULT hr = WriteShortcut(Link, AppPath, pOptions->InstallDir, L"将一台显示器拆分为多台");
                 if (FAILED(hr))
                 {
                     Result = static_cast<DWORD>(hr);
@@ -332,10 +332,10 @@ namespace DeskSplit
             wchar_t Uninstall[MAX_PATH] = {};
             wchar_t SetupPath[MAX_PATH] = {};
             StringCchPrintfW(SetupPath, ARRAYSIZE(SetupPath), L"%s\\%s", pOptions->InstallDir, kSetupCopyName);
-            if (GetShortcutPath(CSIDL_COMMON_PROGRAMS, kStartMenuFolder, L"Uninstall DesktopSplitter.lnk",
+            if (GetShortcutPath(CSIDL_COMMON_PROGRAMS, kStartMenuFolder, L"卸载 DesktopSplitter.lnk",
                                 Uninstall, ARRAYSIZE(Uninstall)))
             {
-                WriteShortcut(Uninstall, SetupPath, pOptions->InstallDir, L"Remove DesktopSplitter");
+                WriteShortcut(Uninstall, SetupPath, pOptions->InstallDir, L"卸载 DesktopSplitter");
             }
         }
 
@@ -359,7 +359,7 @@ namespace DeskSplit
         {
             DeleteFileW(Link);
         }
-        if (GetShortcutPath(CSIDL_COMMON_PROGRAMS, kStartMenuFolder, L"Uninstall DesktopSplitter.lnk", Link, ARRAYSIZE(Link)))
+        if (GetShortcutPath(CSIDL_COMMON_PROGRAMS, kStartMenuFolder, L"卸载 DesktopSplitter.lnk", Link, ARRAYSIZE(Link)))
         {
             DeleteFileW(Link);
         }

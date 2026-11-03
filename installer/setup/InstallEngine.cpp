@@ -1,4 +1,4 @@
-#include "InstallEngine.h"
+﻿#include "InstallEngine.h"
 
 #include "Payload.h"
 #include "DriverPackage.h"
@@ -57,7 +57,7 @@ namespace
     {
         wchar_t Message[512] = {};
         DeskSplit::FormatWin32Error(Error, Message, ARRAYSIZE(Message));
-        Errorf(pSink, L"%s failed: %s (0x%08X)", What, Message, Error);
+        Errorf(pSink, L"%s 失败: %s (0x%08X)", What, Message, Error);
     }
 
     bool WaitForHealthyDeviceNode(DeskSplit::DeviceNodeInfo* pInfo, DWORD TimeoutMs)
@@ -290,7 +290,7 @@ namespace DeskSplit
 
         if (Length == 0)
         {
-            StringCchPrintfW(Buffer, Chars, L"(no description)");
+            StringCchPrintfW(Buffer, Chars, L"(无说明)");
             return;
         }
 
@@ -314,7 +314,7 @@ namespace DeskSplit
         HANDLE Device = OpenDriverInterface();
         if (Device == INVALID_HANDLE_VALUE)
         {
-            Detailf(pSink, L"Driver not running - no split to revert.");
+            Detailf(pSink, L"驱动未运行 - 没有需要撤销的拆分。");
             return true;
         }
 
@@ -330,42 +330,79 @@ namespace DeskSplit
 
         if (Ok)
         {
-            Detailf(pSink, L"Removed all virtual monitors; the desktop is back on the real display.");
+            Detailf(pSink, L"已移除所有虚拟显示器；桌面已恢复到真实显示器。");
             Sleep(1200);   // let the topology settle before the device disappears
             return true;
         }
 
-        ReportWin32(pSink, L"Removing the virtual monitors", Error);
+        ReportWin32(pSink, L"移除虚拟显示器", Error);
         return false;
     }
 
     _Use_decl_annotations_
+    // WUDFRD.inf is the inbox INF that gives every UMDF device its reflector
+    // service association; this driver package Includes it. On machines where
+    // the file has gone missing from %WINDIR%\INF, device installation fails
+    // with 0xe0000219 ("a function driver was not specified") even though the
+    // driver package itself is fine. The installer embeds a copy of the build
+    // machine's inbox WUDFRD.inf and restores it when - and only when - the
+    // target machine lacks it.
+    bool EnsureWufrdInf(IStepSink* pSink)
+    {
+        wchar_t InfPath[MAX_PATH];
+        if (GetWindowsDirectoryW(InfPath, ARRAYSIZE(InfPath)) == 0)
+        {
+            ReportWin32(pSink, L"定位系统目录", GetLastError());
+            return false;
+        }
+        if (FAILED(StringCchCatW(InfPath, ARRAYSIZE(InfPath), L"\\INF\\WUDFRD.inf")))
+        {
+            return false;
+        }
+
+        if (GetFileAttributesW(InfPath) != INVALID_FILE_ATTRIBUTES)
+        {
+            Detailf(pSink, L"WUDFRD.inf 已存在，无需修复。");
+            return true;
+        }
+
+        Detailf(pSink, L"系统缺少 WUDFRD.inf（UMDF 驱动必需的系统文件），正在补回…");
+        const DWORD Error = WriteResourceToFile(IDR_WUDFRD_INF, InfPath);
+        if (Error != ERROR_SUCCESS)
+        {
+            ReportWin32(pSink, L"补回 WUDFRD.inf", Error);
+            return false;
+        }
+        Detailf(pSink, L"已补回 %s", InfPath);
+        return true;
+    }
+
     int RunInstallSequence(const InstallOptions* pOptions, IStepSink* pSink)
     {
         pSink->OnProgress(0);
 
         // ---- 1. payload ---------------------------------------------------
-        Stepf(pSink, L"Checking the installer contents");
+        Stepf(pSink, L"检查安装程序内容");
         if (!HasEmbeddedPayload())
         {
-            Errorf(pSink, L"This installer does not contain a driver package.");
+            Errorf(pSink, L"此安装程序不包含驱动包。");
             return ExitPayloadMissing;
         }
         if (!ResourceExists(IDR_APP_EXE) || !ResourceExists(IDR_DSCOMP_EXE) ||
             !ResourceExists(IDR_EDIDOVERRIDE_EXE))
         {
-            Errorf(pSink, L"This installer is missing the DesktopSplitter program files.");
+            Errorf(pSink, L"此安装程序缺少 DesktopSplitter 程序文件。");
             return ExitPayloadMissing;
         }
-        Detailf(pSink, L"Driver package and program files present.");
+        Detailf(pSink, L"驱动包和程序文件齐全。");
         pSink->OnProgress(5);
 
         ExtractedPackage Package = {};
-        Stepf(pSink, L"Unpacking the driver");
+        Stepf(pSink, L"解压驱动程序");
         DWORD Error = ExtractPayload(&Package);
         if (Error != ERROR_SUCCESS)
         {
-            ReportWin32(pSink, L"Unpacking the driver", Error);
+            ReportWin32(pSink, L"解压驱动程序", Error);
             return ExitPayloadExtractFailed;
         }
         Detailf(pSink, L"%s", Package.Directory);
@@ -378,27 +415,27 @@ namespace DeskSplit
             if (pSink->IsCancelled()) { Result = ExitCancelled; break; }
 
             // ---- 2. stop anything running (upgrade case) ------------------
-            Stepf(pSink, L"Closing any running DesktopSplitter components");
+            Stepf(pSink, L"关闭正在运行的 DesktopSplitter 组件");
             int Stopped = 0;
             StopRunningProcesses(&Stopped);
             if (Stopped > 0)
             {
-                Detailf(pSink, L"Stopped %d running component(s).", Stopped);
+                Detailf(pSink, L"已停止 %d 个正在运行的组件。", Stopped);
             }
             else
             {
-                Detailf(pSink, L"Nothing was running.");
+                Detailf(pSink, L"没有组件在运行。");
             }
             pSink->OnProgress(15);
 
             // ---- 3. publisher trust ---------------------------------------
-            Stepf(pSink, L"Checking the driver's publisher");
+            Stepf(pSink, L"检查驱动的发布者");
             const LONG TrustStatus = VerifyFileTrust(Package.CatPath);
-            Detailf(pSink, L"Signature check: %s", TrustStatusText(TrustStatus));
+            Detailf(pSink, L"签名检查: %s", TrustStatusText(TrustStatus));
 
             if (TrustStatus == TRUST_E_NOSIGNATURE)
             {
-                Errorf(pSink, L"The driver package is not signed; it cannot be installed.");
+                Errorf(pSink, L"驱动包未签名，无法安装。");
                 Result = ExitCatalogUnusable;
                 break;
             }
@@ -408,7 +445,7 @@ namespace DeskSplit
                 PCCERT_CONTEXT Cert = LoadSignerCertificate(Package.CatPath);
                 if (Cert == nullptr)
                 {
-                    ReportWin32(pSink, L"Reading the signing certificate", GetLastError());
+                    ReportWin32(pSink, L"读取签名证书", GetLastError());
                     Result = ExitCatalogUnusable;
                     break;
                 }
@@ -417,7 +454,7 @@ namespace DeskSplit
                 if (!SummarizeCertificate(Cert, &Summary))
                 {
                     CertFreeCertificateContext(Cert);
-                    Errorf(pSink, L"The signing certificate could not be read.");
+                    Errorf(pSink, L"无法读取签名证书。");
                     Result = ExitCatalogUnusable;
                     break;
                 }
@@ -425,7 +462,7 @@ namespace DeskSplit
                 if (!pSink->ConfirmCertificateTrust(Summary))
                 {
                     CertFreeCertificateContext(Cert);
-                    Errorf(pSink, L"Cancelled: the publisher was not trusted. Nothing was changed.");
+                    Errorf(pSink, L"已取消：未信任该发布者，未做任何更改。");
                     Result = ExitTrustDeclined;
                     break;
                 }
@@ -437,11 +474,11 @@ namespace DeskSplit
                     const DWORD CertError = AddCertificateToStore(Cert, StoreName);
                     if (CertError == ERROR_SUCCESS)
                     {
-                        Detailf(pSink, L"Trusted the publisher in LocalMachine\\%s", StoreName);
+                        Detailf(pSink, L"已在 LocalMachine\\%s 中信任该发布者", StoreName);
                     }
                     else
                     {
-                        ReportWin32(pSink, L"Trusting the publisher", CertError);
+                        ReportWin32(pSink, L"信任发布者", CertError);
                         CertOk = false;
                         break;
                     }
@@ -456,18 +493,28 @@ namespace DeskSplit
             }
             else
             {
-                Detailf(pSink, L"Already trusted by this PC - no changes needed.");
+                Detailf(pSink, L"此电脑已信任该发布者 - 无需更改。");
             }
             pSink->OnProgress(25);
 
+            // ---- 3.5 inbox UMDF support file ------------------------------
+            Stepf(pSink, L"检查系统组件");
+            if (!EnsureWufrdInf(pSink))
+            {
+                Errorf(pSink, L"系统组件 WUDFRD.inf 缺失且无法自动补回，驱动无法安装。");
+                Result = ExitDriverInstallFailed;
+                break;
+            }
+            pSink->OnProgress(28);
+
             // ---- 4. driver package ----------------------------------------
-            Stepf(pSink, L"Installing the display driver");
+            Stepf(pSink, L"安装显示驱动");
 
             OemInfList Before = {};
             FindAllOemInfs(kCatalogFileName, &Before);
             for (size_t i = 0; i < Before.Count; ++i)
             {
-                Detailf(pSink, L"Existing package: %s (%s)", Before.Names[i], Before.DriverVer[i]);
+                Detailf(pSink, L"已有驱动包: %s (%s)", Before.Names[i], Before.DriverVer[i]);
             }
 
             InstallMethod Method = InstallMethod::DiInstallDriver;
@@ -477,17 +524,17 @@ namespace DeskSplit
 
             if (Error != ERROR_SUCCESS)
             {
-                ReportWin32(pSink, L"Installing the display driver", Error);
+                ReportWin32(pSink, L"安装显示驱动", Error);
                 Result = ExitDriverInstallFailed;
                 break;
             }
             Detailf(pSink, AlreadyCurrent
-                        ? L"This version was already installed."
-                        : L"Driver package installed.");
+                        ? L"此版本已安装。"
+                        : L"驱动包已安装。");
             pSink->OnProgress(45);
 
             // ---- 5. prune superseded packages -----------------------------
-            Stepf(pSink, L"Cleaning up older driver versions");
+            Stepf(pSink, L"清理旧版本驱动");
             {
                 OemInfList After = {};
                 FindAllOemInfs(kCatalogFileName, &After);
@@ -503,7 +550,7 @@ namespace DeskSplit
                     if (!Existed)
                     {
                         StringCchCopyW(KeepName, ARRAYSIZE(KeepName), After.Names[i]);
-                        Detailf(pSink, L"New package: %s (%s)", After.Names[i], After.DriverVer[i]);
+                        Detailf(pSink, L"新驱动包: %s (%s)", After.Names[i], After.DriverVer[i]);
                         break;
                     }
                 }
@@ -516,17 +563,17 @@ namespace DeskSplit
                 {
                     int Removed = 0, Failed = 0;
                     RemoveSupersededPackages(kCatalogFileName, KeepName, &Removed, &Failed);
-                    Detailf(pSink, L"Removed %d older package(s).", Removed);
+                    Detailf(pSink, L"已删除 %d 个旧驱动包。", Removed);
                 }
                 else
                 {
-                    Detailf(pSink, L"Nothing to clean up.");
+                    Detailf(pSink, L"没有需要清理的内容。");
                 }
             }
             pSink->OnProgress(55);
 
             // ---- 6. device node -------------------------------------------
-            Stepf(pSink, L"Creating the virtual display device");
+            Stepf(pSink, L"创建虚拟显示设备");
             bool AlreadyExisted = false, NodeCreated = false, NodeReboot = false;
             Error = CreateRootDeviceNode(kHardwareId, kHardwareIdMultiSz,
                                          static_cast<DWORD>(sizeof(kHardwareIdMultiSz)),
@@ -535,76 +582,76 @@ namespace DeskSplit
 
             if (AlreadyExisted)
             {
-                Detailf(pSink, L"The device already exists - reused it.");
+                Detailf(pSink, L"设备已存在 - 直接复用。");
             }
             else if (Error != ERROR_SUCCESS && !NodeCreated)
             {
-                ReportWin32(pSink, L"Creating the device", Error);
+                ReportWin32(pSink, L"创建设备", Error);
                 Result = ExitDevNodeFailed;
                 break;
             }
             else
             {
-                Detailf(pSink, L"Device created.");
+                Detailf(pSink, L"设备已创建。");
             }
             pSink->OnProgress(70);
 
             // ---- 7. verify -------------------------------------------------
-            Stepf(pSink, L"Verifying the driver");
+            Stepf(pSink, L"验证驱动");
             DeviceNodeInfo Info = {};
             if (!WaitForHealthyDeviceNode(&Info, 10000))
             {
                 if (Info.InstanceId[0] == L'\0')
                 {
-                    Errorf(pSink, L"The virtual display device did not appear.");
+                    Errorf(pSink, L"虚拟显示设备未出现。");
                 }
                 else
                 {
-                    Errorf(pSink, L"The device reported problem %u: %s",
+                    Errorf(pSink, L"设备报告问题 %u: %s",
                            Info.Problem, ProblemCodeText(Info.Problem));
                 }
                 Result = ExitVerificationFailed;
                 break;
             }
-            Detailf(pSink, L"Device %s is running.", Info.InstanceId);
+            Detailf(pSink, L"设备 %s 正在运行。", Info.InstanceId);
             pSink->OnProgress(80);
 
             // ---- 8. program files ------------------------------------------
-            Stepf(pSink, L"Installing DesktopSplitter to %s", pOptions->InstallDir);
+            Stepf(pSink, L"将 DesktopSplitter 安装到 %s", pOptions->InstallDir);
             DWORD Bytes = 0;
             Error = InstallProductFiles(pOptions->InstallDir, &Bytes);
             if (Error != ERROR_SUCCESS)
             {
-                ReportWin32(pSink, L"Copying program files", Error);
+                ReportWin32(pSink, L"复制程序文件", Error);
                 Result = ExitFileInstallFailed;
                 break;
             }
-            Detailf(pSink, L"Copied %.1f MB.", static_cast<double>(Bytes) / (1024.0 * 1024.0));
+            Detailf(pSink, L"已复制 %.1f MB。", static_cast<double>(Bytes) / (1024.0 * 1024.0));
             pSink->OnProgress(92);
 
             // ---- 9. shortcuts, registry ------------------------------------
-            Stepf(pSink, L"Creating shortcuts and registry entries");
+            Stepf(pSink, L"创建快捷方式和注册表项");
             CreateShortcuts(pOptions);
-            if (pOptions->DesktopShortcut)   Detailf(pSink, L"Desktop shortcut created.");
-            if (pOptions->StartMenuShortcut) Detailf(pSink, L"Start menu shortcut created.");
+            if (pOptions->DesktopShortcut)   Detailf(pSink, L"桌面快捷方式已创建。");
+            if (pOptions->StartMenuShortcut) Detailf(pSink, L"开始菜单快捷方式已创建。");
 
             WriteUninstallEntry(pOptions, Bytes / 1024);
-            Detailf(pSink, L"Registered in Add or remove programs.");
+            Detailf(pSink, L"已注册到“添加或删除程序”。");
 
             WriteProductFlags(pOptions);
             if (pOptions->HidePhysicalDisplaySupported)
             {
-                Detailf(pSink, L"Hide physical display: %s",
-                        pOptions->HidePhysicalDisplay ? L"enabled" : L"disabled");
+                Detailf(pSink, L"隐藏物理显示器: %s",
+                        pOptions->HidePhysicalDisplay ? L"已启用" : L"已禁用");
             }
             else
             {
-                Detailf(pSink, L"Hide physical display: not supported on this Windows edition.");
+                Detailf(pSink, L"隐藏物理显示器: 当前 Windows 版本不支持。");
             }
 
             if (RebootRequired || NodeReboot)
             {
-                Detailf(pSink, L"NOTE: a restart is needed to finish setting up the driver.");
+                Detailf(pSink, L"注意：需要重启电脑才能完成驱动的设置。");
             }
 
             pSink->OnProgress(100);
@@ -626,13 +673,13 @@ namespace DeskSplit
         const bool Installed = ReadInstalledState(InstallDir, ARRAYSIZE(InstallDir),
                                                   Version, ARRAYSIZE(Version));
 
-        Stepf(pSink, L"Stopping DesktopSplitter");
+        Stepf(pSink, L"停止 DesktopSplitter");
         int Stopped = 0;
         StopRunningProcesses(&Stopped);
-        Detailf(pSink, L"Stopped %d component(s).", Stopped);
+        Detailf(pSink, L"已停止 %d 个组件。", Stopped);
         pSink->OnProgress(10);
 
-        Stepf(pSink, L"Restoring the display layout");
+        Stepf(pSink, L"恢复显示布局");
         RevertSplit(pSink);
         pSink->OnProgress(20);
 
@@ -640,7 +687,7 @@ namespace DeskSplit
         // This MUST happen while edidoverride.exe is still on disk, and before
         // the files are deleted. Leaving a monitor overridden after uninstall
         // would hide a real display with no tool left to bring it back.
-        Stepf(pSink, L"Restoring hidden displays");
+        Stepf(pSink, L"恢复被隐藏的显示器");
         {
             OverriddenMonitors Overridden = {};
             FindOverriddenMonitors(&Overridden);
@@ -649,17 +696,17 @@ namespace DeskSplit
             if (Overridden.Count == 0)
             {
                 Detailf(pSink, FlagSet
-                            ? L"The hide-display option was on, but no monitor is currently overridden."
-                            : L"No monitor is hidden - nothing to restore.");
+                            ? L"隐藏显示器选项曾开启，但目前没有显示器被覆盖。"
+                            : L"没有显示器被隐藏 - 无需恢复。");
             }
             else if (!Installed)
             {
                 // No install dir recorded, so no helper to run.
-                Errorf(pSink, L"%zu monitor(s) still have an EDID override but the install "
-                              L"location is unknown.", Overridden.Count);
+                Errorf(pSink, L"仍有 %zu 台显示器存在 EDID 覆盖，但安装"
+                              L"位置未知。", Overridden.Count);
                 for (size_t i = 0; i < Overridden.Count; ++i)
                 {
-                    Errorf(pSink, L"  RECOVER MANUALLY: edidoverride.exe guarded-revert %s --yes",
+                    Errorf(pSink, L"  请手动恢复: edidoverride.exe guarded-revert %s --yes",
                            Overridden.Ids[i]);
                 }
             }
@@ -667,7 +714,7 @@ namespace DeskSplit
             {
                 for (size_t i = 0; i < Overridden.Count; ++i)
                 {
-                    Detailf(pSink, L"Reverting EDID override on %s", Overridden.Ids[i]);
+                    Detailf(pSink, L"正在撤销 %s 的 EDID 覆盖", Overridden.Ids[i]);
 
                     wchar_t Arguments[280] = {};
                     StringCchPrintfW(Arguments, ARRAYSIZE(Arguments),
@@ -677,22 +724,22 @@ namespace DeskSplit
                     if (!RunEdidOverride(InstallDir, Arguments, &ExitCode))
                     {
                         // Non-fatal, but the user must be told exactly how to fix it.
-                        Errorf(pSink, L"Could not run edidoverride.exe for %s.", Overridden.Ids[i]);
-                        Errorf(pSink, L"  RECOVER MANUALLY: edidoverride.exe guarded-revert %s --yes",
+                        Errorf(pSink, L"无法为 %s 运行 edidoverride.exe。", Overridden.Ids[i]);
+                        Errorf(pSink, L"  请手动恢复: edidoverride.exe guarded-revert %s --yes",
                                Overridden.Ids[i]);
-                        Errorf(pSink, L"  or delete HKLM\\SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\%s"
-                                      L"\\Device Parameters\\EDID_OVERRIDE and reboot.",
+                        Errorf(pSink, L"  或删除 HKLM\\SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\%s"
+                                      L"\\Device Parameters\\EDID_OVERRIDE 并重启。",
                                Overridden.Ids[i]);
                     }
                     else if (ExitCode == 0)
                     {
-                        Detailf(pSink, L"%s is visible to Windows again.", Overridden.Ids[i]);
+                        Detailf(pSink, L"%s 已重新对 Windows 可见。", Overridden.Ids[i]);
                     }
                     else
                     {
-                        Errorf(pSink, L"edidoverride.exe returned %u for %s; the monitor may still be hidden.",
+                        Errorf(pSink, L"edidoverride.exe 返回 %u（针对 %s）；该显示器可能仍被隐藏。",
                                ExitCode, Overridden.Ids[i]);
-                        Errorf(pSink, L"  RECOVER MANUALLY: edidoverride.exe guarded-revert %s --yes",
+                        Errorf(pSink, L"  请手动恢复: edidoverride.exe guarded-revert %s --yes",
                                Overridden.Ids[i]);
                     }
                 }
@@ -700,24 +747,24 @@ namespace DeskSplit
         }
         pSink->OnProgress(28);
 
-        Stepf(pSink, L"Removing the virtual display device");
+        Stepf(pSink, L"删除虚拟显示设备");
         int Removed = 0;
         bool RebootRequired = false;
         DWORD Error = RemoveDeviceNodes(kHardwareId, &Removed, &RebootRequired);
         if (Error != ERROR_SUCCESS)
         {
-            ReportWin32(pSink, L"Removing the device", Error);
+            ReportWin32(pSink, L"删除设备", Error);
             Result = ExitUninstallFailed;
         }
-        Detailf(pSink, L"Removed %d device(s).", Removed);
+        Detailf(pSink, L"已删除 %d 个设备。", Removed);
         pSink->OnProgress(45);
 
-        Stepf(pSink, L"Removing the display driver");
+        Stepf(pSink, L"删除显示驱动");
         {
             OemInfList Staged = {};
             if (!FindAllOemInfs(kCatalogFileName, &Staged))
             {
-                Detailf(pSink, L"The driver was not present.");
+                Detailf(pSink, L"驱动不存在。");
             }
             else
             {
@@ -726,11 +773,11 @@ namespace DeskSplit
                     const DWORD PkgError = UninstallOemInf(Staged.Names[i], true);
                     if (PkgError == ERROR_SUCCESS)
                     {
-                        Detailf(pSink, L"Removed %s (%s)", Staged.Names[i], Staged.DriverVer[i]);
+                        Detailf(pSink, L"已删除 %s (%s)", Staged.Names[i], Staged.DriverVer[i]);
                     }
                     else
                     {
-                        ReportWin32(pSink, L"Removing the driver package", PkgError);
+                        ReportWin32(pSink, L"删除驱动包", PkgError);
                         Result = ExitUninstallFailed;
                     }
                 }
@@ -738,29 +785,29 @@ namespace DeskSplit
         }
         pSink->OnProgress(65);
 
-        Stepf(pSink, L"Removing shortcuts and program files");
+        Stepf(pSink, L"删除快捷方式和程序文件");
         RemoveShortcuts();
         if (Installed)
         {
             RemoveProductFiles(InstallDir);
-            Detailf(pSink, L"Removed %s", InstallDir);
+            Detailf(pSink, L"已删除 %s", InstallDir);
         }
         RemoveUninstallEntry();
         RemoveProductFlags();
-        Detailf(pSink, L"Removed registry entries.");
+        Detailf(pSink, L"注册表项已删除。");
         pSink->OnProgress(85);
 
-        Stepf(pSink, L"Publisher certificate");
+        Stepf(pSink, L"发布者证书");
         if (!pOptions->RemoveCertificate)
         {
-            Detailf(pSink, L"Left in place. Re-run with the certificate option to remove it.");
+            Detailf(pSink, L"已保留。如需删除，请勾选证书选项重新运行。");
         }
         else
         {
             ExtractedPackage Package = {};
             if (ExtractPayload(&Package) != ERROR_SUCCESS)
             {
-                Errorf(pSink, L"Could not unpack the package to identify the certificate.");
+                Errorf(pSink, L"无法解压驱动包以识别证书。");
                 Result = ExitUninstallFailed;
             }
             else
@@ -768,7 +815,7 @@ namespace DeskSplit
                 PCCERT_CONTEXT Cert = LoadSignerCertificate(Package.CatPath);
                 if (Cert == nullptr)
                 {
-                    Errorf(pSink, L"Could not read the certificate; trust stores untouched.");
+                    Errorf(pSink, L"无法读取证书；信任存储未做更改。");
                     Result = ExitUninstallFailed;
                 }
                 else
@@ -781,7 +828,7 @@ namespace DeskSplit
                         {
                             if (RemoveCertificateFromStore(Summary.Sha1, StoreName) == ERROR_SUCCESS)
                             {
-                                Detailf(pSink, L"Removed from LocalMachine\\%s", StoreName);
+                                Detailf(pSink, L"已从 LocalMachine\\%s 中删除", StoreName);
                             }
                         }
                     }

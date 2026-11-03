@@ -1,4 +1,4 @@
-// DesktopSplitterSetup.rc
+﻿// DesktopSplitterSetup.rc
 //
 // Embeds the signed driver package AND the product files. Everything is staged
 // into payload\ by stage-payload.ps1, which runs as a prebuild step and fails
@@ -14,6 +14,7 @@
 IDR_DRIVER_INF        RCDATA  "payload\\DesktopSplitterVdd.inf"
 IDR_DRIVER_DLL        RCDATA  "payload\\DesktopSplitterVdd.dll"
 IDR_DRIVER_CAT        RCDATA  "payload\\DesktopSplitterVdd.cat"
+IDR_WUDFRD_INF        RCDATA  "payload\\WUDFRD.inf"
 
 // Product files installed into the target directory. DesktopSplitter.exe is a
 // self-contained single-file publish, so the target PC needs no .NET runtime.
@@ -36,10 +37,10 @@ VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
-        BLOCK "040904b0"
+        BLOCK "080404b0"
         BEGIN
             VALUE "CompanyName",      "DesktopSplitter"
-            VALUE "FileDescription",  "DesktopSplitter virtual display driver installer"
+            VALUE "FileDescription",  "DesktopSplitter 虚拟显示驱动安装程序"
             VALUE "FileVersion",      DS_VERSION_STR4
             VALUE "InternalName",     "DesktopSplitterSetup"
             VALUE "LegalCopyright",   "DesktopSplitter"
@@ -50,6 +51,6 @@ BEGIN
     END
     BLOCK "VarFileInfo"
     BEGIN
-        VALUE "Translation", 0x409, 1200
+        VALUE "Translation", 0x804, 1200
     END
 END

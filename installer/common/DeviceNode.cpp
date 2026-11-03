@@ -1,4 +1,4 @@
-#include "DeviceNode.h"
+﻿#include "DeviceNode.h"
 
 #include <newdev.h>
 #include <devguid.h>
@@ -241,21 +241,21 @@ namespace DeskSplit
     {
         switch (Problem)
         {
-        case 0:                       return L"none";
-        case CM_PROB_NOT_CONFIGURED:  return L"CM_PROB_NOT_CONFIGURED - no driver bound to the device";
-        case CM_PROB_FAILED_START:    return L"CM_PROB_FAILED_START - the driver failed to start";
-        case CM_PROB_NORMAL_CONFLICT: return L"CM_PROB_NORMAL_CONFLICT - resource conflict";
-        case CM_PROB_NEED_RESTART:    return L"CM_PROB_NEED_RESTART - a restart is required";
-        case CM_PROB_REINSTALL:       return L"CM_PROB_REINSTALL - the device must be reinstalled";
-        case CM_PROB_DISABLED:        return L"CM_PROB_DISABLED - the device is disabled";
-        case CM_PROB_FAILED_INSTALL:  return L"CM_PROB_FAILED_INSTALL - driver installation failed";
-        case CM_PROB_FAILED_ADD:      return L"CM_PROB_FAILED_ADD - a driver in the stack failed AddDevice";
+        case 0:                       return L"无";
+        case CM_PROB_NOT_CONFIGURED:  return L"CM_PROB_NOT_CONFIGURED - 没有驱动绑定到该设备";
+        case CM_PROB_FAILED_START:    return L"CM_PROB_FAILED_START - 驱动启动失败";
+        case CM_PROB_NORMAL_CONFLICT: return L"CM_PROB_NORMAL_CONFLICT - 资源冲突";
+        case CM_PROB_NEED_RESTART:    return L"CM_PROB_NEED_RESTART - 需要重启";
+        case CM_PROB_REINSTALL:       return L"CM_PROB_REINSTALL - 必须重新安装该设备";
+        case CM_PROB_DISABLED:        return L"CM_PROB_DISABLED - 该设备已被禁用";
+        case CM_PROB_FAILED_INSTALL:  return L"CM_PROB_FAILED_INSTALL - 驱动安装失败";
+        case CM_PROB_FAILED_ADD:      return L"CM_PROB_FAILED_ADD - 驱动栈中的某个驱动执行 AddDevice 失败";
         case CM_PROB_DRIVER_FAILED_LOAD:
-                                      return L"CM_PROB_DRIVER_FAILED_LOAD - the driver could not be loaded "
-                                             L"(unsigned/untrusted package, or a missing dependency)";
-        case CM_PROB_DRIVER_BLOCKED:  return L"CM_PROB_DRIVER_BLOCKED - the driver is blocked from loading";
-        case CM_PROB_UNSIGNED_DRIVER: return L"CM_PROB_UNSIGNED_DRIVER - the driver package is not trusted";
-        default:                      return L"see CM_PROB_* in cfgmgr32.h";
+                                      return L"CM_PROB_DRIVER_FAILED_LOAD - 无法加载驱动"
+                                             L"（驱动包未签名/不受信任，或缺少依赖项）";
+        case CM_PROB_DRIVER_BLOCKED:  return L"CM_PROB_DRIVER_BLOCKED - 驱动被阻止加载";
+        case CM_PROB_UNSIGNED_DRIVER: return L"CM_PROB_UNSIGNED_DRIVER - 驱动包不受信任";
+        default:                      return L"未知问题代码（请参阅 cfgmgr32.h 中的 CM_PROB_* 定义）";
         }
     }
 }

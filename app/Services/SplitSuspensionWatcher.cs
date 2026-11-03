@@ -73,7 +73,7 @@ public sealed class SplitSuspensionWatcher : IDisposable
             if (_thread is not null) return;
             if (string.IsNullOrEmpty(_activePrimaryDevice) || string.IsNullOrEmpty(_suspendedPrimaryDevice))
             {
-                _log.Report("Suspend/resume watcher not started: the primary displays are not known.");
+                _log.Report("挂起/恢复监视未启动：主显示器未知。");
                 return;
             }
 
@@ -81,8 +81,8 @@ public sealed class SplitSuspensionWatcher : IDisposable
             IsSuspended = false;
             _thread = new Thread(Loop) { IsBackground = true, Name = "DeskSplit suspend watcher" };
             _thread.Start();
-            _log.Report("Watching for lock / UAC transitions (primary will move to " +
-                        $"{_suspendedPrimaryDevice} while they are on screen).");
+            _log.Report("正在监视锁屏 / UAC 切换（它们显示期间主显示器将移到 " +
+                        $"{_suspendedPrimaryDevice}）。");
         }
     }
 
@@ -105,13 +105,13 @@ public sealed class SplitSuspensionWatcher : IDisposable
 
         if (restorePrimary && IsSuspended)
         {
-            _log.Report("Restoring the split's primary display before stopping the watcher.");
-            MoveTo(_activePrimaryDevice, "segment 1");
+            _log.Report("停止监视前，先恢复分屏的主显示器。");
+            MoveTo(_activePrimaryDevice, "分区 1");
         }
 
         IsSuspended = false;
         CloseHandles();
-        _log.Report("Stopped watching for lock / UAC transitions.");
+        _log.Report("已停止监视锁屏 / UAC 切换。");
     }
 
     /// <summary>
@@ -160,7 +160,7 @@ public sealed class SplitSuspensionWatcher : IDisposable
             }
             catch (Exception ex)
             {
-                _log.Report("Suspend/resume watcher error: " + ex.Message);
+                _log.Report("挂起/恢复监视出错：" + ex.Message);
                 _stop.Wait(ReconcilePeriod);
             }
         }
@@ -176,8 +176,8 @@ public sealed class SplitSuspensionWatcher : IDisposable
         {
             if (IsSuspended && HidingStatus.IsSplitActive())
             {
-                _log.Report("Compositor events disappeared while suspended — restoring the split's primary.");
-                if (MoveTo(_activePrimaryDevice, "segment 1")) IsSuspended = false;
+                _log.Report("挂起期间合成器事件消失——恢复分屏的主显示器。");
+                if (MoveTo(_activePrimaryDevice, "分区 1")) IsSuspended = false;
             }
             return;
         }
@@ -194,14 +194,14 @@ public sealed class SplitSuspensionWatcher : IDisposable
 
         if (wantSuspended)
         {
-            _log.Report("Lock screen / secure desktop detected — handing primary back to " +
-                        $"{_suspendedPrimaryDevice}.");
-            if (MoveTo(_suspendedPrimaryDevice, "the physical monitor")) IsSuspended = true;
+            _log.Report("检测到锁屏 / 安全桌面——把主显示器交还给 " +
+                        $"{_suspendedPrimaryDevice}。");
+            if (MoveTo(_suspendedPrimaryDevice, "物理显示器")) IsSuspended = true;
         }
         else
         {
-            _log.Report($"Secure desktop dismissed — returning primary to {_activePrimaryDevice}.");
-            if (MoveTo(_activePrimaryDevice, "segment 1")) IsSuspended = false;
+            _log.Report($"安全桌面已消失——把主显示器恢复到 {_activePrimaryDevice}。");
+            if (MoveTo(_activePrimaryDevice, "分区 1")) IsSuspended = false;
         }
     }
 
@@ -219,7 +219,7 @@ public sealed class SplitSuspensionWatcher : IDisposable
             // were queued behind it.
             if (!HidingStatus.IsSplitActive())
             {
-                _log.Report("Split is no longer active — skipping the primary switch.");
+                _log.Report("分屏已不再活动——跳过主显示器切换。");
                 return false;
             }
             return ApplyService.SwitchPrimaryTo(device, description, _log);

@@ -82,7 +82,7 @@ public sealed class MonitorInfo
     /// </summary>
     public string DisplayLabel =>
         string.IsNullOrWhiteSpace(FriendlyName)
-            ? $"Display {(Index == int.MaxValue || Index <= 0 ? 1 : Index)}"
+            ? $"显示器 {(Index == int.MaxValue || Index <= 0 ? 1 : Index)}"
             : FriendlyName.Trim();
 
     /// <summary>
@@ -93,12 +93,12 @@ public sealed class MonitorInfo
     {
         get
         {
-            string device = string.IsNullOrWhiteSpace(DeviceName) ? "(unknown device)" : DeviceName;
+            string device = string.IsNullOrWhiteSpace(DeviceName) ? "（未知设备）" : DeviceName;
             string mode = CurrentWidth > 0 && CurrentHeight > 0
                 ? $"{CurrentWidth}x{CurrentHeight}"
-                : "unknown size";
+                : "未知尺寸";
             string hz = MaxRefreshHz > 0 ? $" @ {MaxRefreshHz}Hz" : string.Empty;
-            string primary = IsPrimary ? "  (primary)" : string.Empty;
+            string primary = IsPrimary ? "  （主显示器）" : string.Empty;
             return $"{DisplayLabel} — {device} — {mode}{hz}{primary}";
         }
     }
@@ -107,7 +107,7 @@ public sealed class MonitorInfo
     public string CurrentModeText =>
         CurrentWidth > 0 && CurrentHeight > 0
             ? $"{CurrentWidth}x{CurrentHeight} @ {(CurrentRefreshHz > 0 ? CurrentRefreshHz : MaxRefreshHz)} Hz"
-            : "unknown";
+            : "未知";
 
     public override string ToString() => Caption;
 }

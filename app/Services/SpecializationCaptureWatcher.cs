@@ -95,14 +95,14 @@ public sealed class SpecializationCaptureWatcher : IDisposable
 
                         if (!parsed.Matches(_monitor))
                         {
-                            _log?.Report($"Observed a display-specialization command for a different " +
-                                         $"monitor (target {parsed.TargetId}); ignoring it.");
+                            _log?.Report($"观察到一条针对其他显示器的专用化命令" +
+                                         $"（目标 {parsed.TargetId}）；已忽略。");
                             continue;
                         }
 
                         Captured = parsed;
-                        _log?.Report($"Observed Windows' own command for {_monitor.DisplayLabel}: " +
-                                     $"hash {parsed.Hash}.");
+                        _log?.Report($"观察到 Windows 对 {_monitor.DisplayLabel} 的命令：" +
+                                     $"哈希 {parsed.Hash}。");
                     }
                 }
             }

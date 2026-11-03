@@ -66,7 +66,7 @@ public sealed class MainViewModel : ObservableObject
         RefreshDriverStatus();
         RefreshCompositorStatus();
 
-        AppendStatus("Ready.");
+        AppendStatus("就绪。");
 
         // If a previous session died while the physical monitor was hidden, put it back.
         _ = RecoverThenRefreshAsync();
@@ -187,7 +187,7 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppendStatus("Could not save preferences: " + ex.Message);
+            AppendStatus("无法保存偏好设置：" + ex.Message);
         }
     }
 
@@ -205,11 +205,11 @@ public sealed class MainViewModel : ObservableObject
         if (!ApplyService.ShouldAutoApplyOnStartup(settings, splitActive)) return;
         if (!RestoreSettings(settings))
         {
-            AppendStatus("Skipping auto-apply: the saved monitor is not connected.");
+            AppendStatus("跳过自动应用：保存的显示器未连接。");
             return;
         }
 
-        AppendStatus("--- Re-applying the saved configuration (no confirmation at startup) ---");
+        AppendStatus("--- 正在重新应用已保存的配置（启动时无需确认）---");
         await ApplyAsync(promptToConfirm: false).ConfigureAwait(true);
     }
 
@@ -389,7 +389,7 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppendStatus("Display-hiding recovery check failed: " + ex.Message);
+            AppendStatus("显示器隐藏恢复检查失败：" + ex.Message);
         }
     }
 
@@ -400,7 +400,7 @@ public sealed class MainViewModel : ObservableObject
     {
         LoadMonitors(announce: false);
         UpdateModeTexts();
-        AppendStatus("Display configuration changed — monitor list refreshed.");
+        AppendStatus("显示配置已更改 —— 显示器列表已刷新。");
     }
 
     public void LoadMonitors(bool announce)
@@ -433,11 +433,11 @@ public sealed class MainViewModel : ObservableObject
             RebuildSegments(resetSizes: !(sameSelection && countMatches));
 
             if (announce)
-                AppendStatus($"Found {Monitors.Count} physical monitor(s).");
+                AppendStatus($"找到 {Monitors.Count} 台物理显示器。");
         }
         catch (Exception ex)
         {
-            AppendStatus("Monitor enumeration failed: " + ex.Message);
+            AppendStatus("显示器枚举失败：" + ex.Message);
         }
         RaiseCommandStates();
     }
@@ -453,7 +453,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         CurrentModeText = m.CurrentModeText;
-        RefreshText = $"{m.MaxRefreshHz} Hz  ({m.MaxRefreshMillihertz} mHz)  — native {m.MaxWidth}x{m.MaxHeight}";
+        RefreshText = $"{m.MaxRefreshHz} Hz  ({m.MaxRefreshMillihertz} mHz)  — 原生 {m.MaxWidth}x{m.MaxHeight}";
     }
 
     // ------------------------------------------------------------------ segments + editor
@@ -624,12 +624,12 @@ public sealed class MainViewModel : ObservableObject
         int sumH = tracks.RowHeights.Sum();
 
         var parts = new List<string>(2);
-        if (sumW != monW) parts.Add($"widths sum to {sumW} px (monitor is {monW})");
-        if (sumH != monH) parts.Add($"heights sum to {sumH} px (monitor is {monH})");
+        if (sumW != monW) parts.Add($"宽度合计为 {sumW} 像素（显示器为 {monW}）");
+        if (sumH != monH) parts.Add($"高度合计为 {sumH} 像素（显示器为 {monH}）");
 
         SumNote = parts.Count == 0
             ? string.Empty
-            : string.Join("; ", parts) + " — segments will be scaled into their on-screen rects.";
+            : string.Join("；", parts) + " —— 各分区将被缩放至其在屏幕上的区域。";
     }
 
     // ------------------------------------------------------------------ splitter dragging
@@ -773,40 +773,40 @@ public sealed class MainViewModel : ObservableObject
         };
 
         IsBusy = true;
-        AppendStatus($"--- Applying '{layout.Name}' to {physical.DisplayLabel} ({physical.DeviceName}) ---");
+        AppendStatus($"--- 正在将布局“{layout.Name}”应用到 {physical.DisplayLabel}（{physical.DeviceName}）---");
         try
         {
             ApplyResult result = await Task.Run(() => ApplyService.Apply(request, _progress, CancellationToken.None))
                                            .ConfigureAwait(true);
             AppendStatus(result.RolledBack
-                ? $"Change reverted — restored {result.RollbackDescription}."
-                : $"Done. {result.VirtualMonitors.Count} virtual monitor(s) active.");
+                ? $"更改已撤销 —— 已恢复 {result.RollbackDescription}。"
+                : $"完成。{result.VirtualMonitors.Count} 台虚拟显示器已启用。");
 
             if (!result.RolledBack) StartSuspensionWatcher();
         }
         catch (ApplyException ex)
         {
-            AppendStatus("Apply failed: " + ex.Message);
+            AppendStatus("应用失败：" + ex.Message);
         }
         catch (DriverNotFoundException ex)
         {
-            AppendStatus("Apply failed: " + ex.Message);
+            AppendStatus("应用失败：" + ex.Message);
         }
         catch (DriverIoException ex)
         {
-            AppendStatus("Apply failed: " + ex.Message);
+            AppendStatus("应用失败：" + ex.Message);
         }
         catch (DisplayArrangeException ex)
         {
-            AppendStatus("Apply failed: " + ex.Message);
+            AppendStatus("应用失败：" + ex.Message);
         }
         catch (CompositorNotFoundException ex)
         {
-            AppendStatus("Apply failed: " + ex.Message);
+            AppendStatus("应用失败：" + ex.Message);
         }
         catch (Exception ex)
         {
-            AppendStatus("Apply failed (unexpected): " + ex.Message);
+            AppendStatus("应用失败（意外错误）：" + ex.Message);
         }
         finally
         {
@@ -821,7 +821,7 @@ public sealed class MainViewModel : ObservableObject
     public async Task RevertAsync()
     {
         IsBusy = true;
-        AppendStatus("--- Reverting ---");
+        AppendStatus("--- 正在撤销 ---");
 
         // Drop any pending suspend state first: Revert restores primary itself, and a watcher
         // still reacting to events would fight it.
@@ -833,11 +833,11 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (ApplyException ex)
         {
-            AppendStatus("Revert failed: " + ex.Message);
+            AppendStatus("撤销失败：" + ex.Message);
         }
         catch (Exception ex)
         {
-            AppendStatus("Revert failed (unexpected): " + ex.Message);
+            AppendStatus("撤销失败（意外错误）：" + ex.Message);
         }
         finally
         {
@@ -855,12 +855,12 @@ public sealed class MainViewModel : ObservableObject
         AppSettings? settings = SettingsStore.Load();
         if (settings is null || settings.Segments.Count == 0)
         {
-            AppendStatus("No previously applied configuration found.");
+            AppendStatus("未找到先前应用的配置。");
             return;
         }
         if (!RestoreSettings(settings))
         {
-            AppendStatus($"Monitor '{settings.PhysicalDevice}' from the saved settings is not connected.");
+            AppendStatus($"已保存设置中的显示器“{settings.PhysicalDevice}”未连接。");
             return;
         }
         await ApplyAsync().ConfigureAwait(true);
@@ -880,16 +880,16 @@ public sealed class MainViewModel : ObservableObject
             try
             {
                 DESKSPLIT_STATUS status = DriverClient.GetStatus();
-                DriverStatus = $"Driver OK (protocol v{status.Version}, {status.ActiveMonitorCount} virtual monitor(s)).";
+                DriverStatus = $"驱动正常（协议 v{status.Version}，{status.ActiveMonitorCount} 台虚拟显示器）。";
             }
             catch (DriverIoException)
             {
-                DriverStatus = $"Driver device found ({path}) but GET_STATUS failed.";
+                DriverStatus = $"已找到驱动设备（{path}），但 GET_STATUS 失败。";
             }
         }
         catch (Exception ex)
         {
-            DriverStatus = "Driver check failed: " + ex.Message;
+            DriverStatus = "驱动检查失败：" + ex.Message;
         }
     }
 
@@ -897,15 +897,15 @@ public sealed class MainViewModel : ObservableObject
     {
         if (CompositorLauncher.IsRunning())
         {
-            CompositorStatus = "Compositor: running.";
+            CompositorStatus = "合成器：正在运行。";
         }
         else if (CompositorLauncher.TryFindExecutable(out string exe))
         {
-            CompositorStatus = $"Compositor: stopped ({exe}).";
+            CompositorStatus = $"合成器：已停止（{exe}）。";
         }
         else
         {
-            CompositorStatus = $"Compositor: not found — expected {CompositorLauncher.ExpectedPath}.";
+            CompositorStatus = $"合成器：未找到 —— 预期路径为 {CompositorLauncher.ExpectedPath}。";
         }
     }
 
@@ -968,7 +968,7 @@ public sealed class MainViewModel : ObservableObject
             finally { _editorSuspended = false; }
 
             RebuildEditor();
-            AppendStatus($"Restored last settings from {SettingsStore.FilePath}.");
+            AppendStatus($"已从 {SettingsStore.FilePath} 恢复上次的设置。");
         }
 
         RaiseCommandStates();

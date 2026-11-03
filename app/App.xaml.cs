@@ -27,7 +27,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             MessageBox.Show(
-                "Unexpected error:" + Environment.NewLine + args.Exception.Message,
+                "发生意外错误：" + Environment.NewLine + args.Exception.Message,
                 "DesktopSplitter", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };

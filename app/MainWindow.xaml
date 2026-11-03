@@ -142,10 +142,10 @@
                 <StackPanel>
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,0,0,5"/>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="W" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="宽" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
                         <TextBox Width="66" Margin="6,0,10,0"
                                  Text="{Binding WidthText, UpdateSourceTrigger=PropertyChanged}"/>
-                        <TextBlock Text="H" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="高" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
                         <TextBox Width="66" Margin="6,0,0,0"
                                  Text="{Binding HeightText, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
@@ -193,7 +193,7 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
             <StackPanel>
 
-                <TextBlock Text="PHYSICAL MONITOR" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="物理显示器" Style="{StaticResource SectionHeader}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -204,7 +204,7 @@
                               SelectedItem="{Binding SelectedMonitor}"
                               DisplayMemberPath="Caption"
                               IsEnabled="{Binding IsIdle}"/>
-                    <Button Grid.Column="1" Content="Rescan" Margin="8,0,0,0"
+                    <Button Grid.Column="1" Content="重新扫描" Margin="8,0,0,0"
                             Command="{Binding RefreshMonitorsCommand}"/>
                 </Grid>
 
@@ -213,7 +213,7 @@
                     <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
                             BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,10,0">
                         <StackPanel>
-                            <TextBlock Text="CURRENT MODE" Foreground="{StaticResource MutedBrush}"
+                            <TextBlock Text="当前模式" Foreground="{StaticResource MutedBrush}"
                                        FontSize="10" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding CurrentModeText}" FontFamily="Consolas" FontSize="13"
                                        Margin="0,2,0,0"/>
@@ -222,7 +222,7 @@
                     <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
                             BorderThickness="1" CornerRadius="4" Padding="10,6">
                         <StackPanel>
-                            <TextBlock Text="MAX REFRESH — ALL ZONES RUN AT THIS RATE"
+                            <TextBlock Text="最大刷新率 — 所有分区均以此速率运行"
                                        Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding RefreshText}" FontFamily="Consolas" FontSize="13"
                                        Margin="0,2,0,0"/>
@@ -230,25 +230,25 @@
                     </Border>
                 </StackPanel>
 
-                <TextBlock Text="STARTUP" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="启动" Style="{StaticResource SectionHeader}"/>
                 <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
                         BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,16">
                     <StackPanel>
-                        <CheckBox Content="Start DesktopSplitter with Windows"
+                        <CheckBox Content="随 Windows 启动 DesktopSplitter"
                                   IsChecked="{Binding StartWithWindows}"
                                   Foreground="{StaticResource ForegroundBrush}"
                                   IsEnabled="{Binding IsIdle}"/>
-                        <CheckBox Content="Re-apply the last split automatically when DesktopSplitter starts"
+                        <CheckBox Content="DesktopSplitter 启动时自动重新应用上次的分割"
                                   IsChecked="{Binding ApplyOnStartup}"
                                   Foreground="{StaticResource ForegroundBrush}"
                                   IsEnabled="{Binding IsIdle}" Margin="0,8,0,0"/>
                         <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"
                                    Margin="0,8,0,0"
-                                   Text="The split is always torn down when DesktopSplitter exits, so the desktop is never left split with nothing driving it. A split that was still running at exit comes back on the next launch; one you reverted yourself does not."/>
+                                   Text="退出 DesktopSplitter 时分割始终会被撤销，因此桌面不会在无人驱动的情况下保持分割状态。退出时仍在运行的分割会在下次启动时恢复；由你自己撤销的则不会。"/>
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="LAYOUT" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="布局" Style="{StaticResource SectionHeader}"/>
                 <ListBox ItemsSource="{Binding Layouts}"
                          SelectedItem="{Binding SelectedLayout}"
                          ItemTemplate="{StaticResource LayoutItemTemplate}"
@@ -264,7 +264,7 @@
                     </ListBox.ItemsPanel>
                 </ListBox>
 
-                <TextBlock Text="ZONE EDITOR — DRAG THE BORDERS, OR TYPE EXACT SIZES BELOW"
+                <TextBlock Text="分区编辑器 — 拖动边框，或在下方输入精确尺寸"
                            Style="{StaticResource SectionHeader}"/>
 
                 <Border Background="{StaticResource CanvasBackground}"
@@ -324,18 +324,18 @@
                 </ItemsControl>
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
-                    <Button Content="Reset to layout defaults" Command="{Binding ResetSegmentsCommand}"/>
+                    <Button Content="重置为布局默认值" Command="{Binding ResetSegmentsCommand}"/>
                 </StackPanel>
 
                 <!-- ============================ display hiding ============================ -->
-                <TextBlock Text="DISPLAY HIDING (EXPERIMENTAL)" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="隐藏显示器（实验性）" Style="{StaticResource SectionHeader}"/>
                 <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}"
                         BorderThickness="1" CornerRadius="4" Padding="14,12" Margin="0,0,0,10"
                         DataContext="{Binding Hiding}">
                     <StackPanel>
                         <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11.5"
                                    Margin="0,0,0,10"
-                                   Text="Removes the physical monitor from the Windows desktop entirely instead of just covering it — the same thing as Settings &gt; Advanced display &gt; &quot;Remove display from desktop&quot;. Enable only records the intent; the monitor is hidden during Apply, once segment 1 is primary, and it comes back automatically unless you confirm within 10 seconds. Revert always restores it."/>
+                                   Text="将物理显示器从 Windows 桌面中彻底移除，而不仅仅是遮盖它 —— 与「设置 &gt; 高级显示 &gt; &quot;从桌面移除显示器&quot;」相同。启用仅记录意图；显示器会在应用期间、当分区 1 成为主显示器后被隐藏，并会自动恢复，除非你在 10 秒内确认。撤销时始终会恢复它。"/>
 
                         <ItemsControl ItemsSource="{Binding Rows}">
                             <ItemsControl.ItemTemplate>
@@ -372,10 +372,10 @@
                         </ItemsControl>
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="Enable hiding..." Command="{Binding EnableCommand}" MinWidth="140"/>
-                            <Button Content="Disable hiding..." Command="{Binding DisableCommand}"
+                            <Button Content="启用隐藏…" Command="{Binding EnableCommand}" MinWidth="140"/>
+                            <Button Content="禁用隐藏…" Command="{Binding DisableCommand}"
                                     Margin="8,0,0,0" MinWidth="140"/>
-                            <Button Content="Re-check" Command="{Binding RefreshCommand}" Margin="8,0,0,0"/>
+                            <Button Content="重新检查" Command="{Binding RefreshCommand}" Margin="8,0,0,0"/>
                         </StackPanel>
 
                         <TextBlock Text="{Binding DisabledReason}" Foreground="#FFE0B457"
@@ -399,11 +399,11 @@
 
         <!-- Actions -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,14,0,10">
-            <Button Content="Apply" Style="{StaticResource PrimaryButton}" MinWidth="110"
+            <Button Content="应用" Style="{StaticResource PrimaryButton}" MinWidth="110"
                     Command="{Binding ApplyCommand}"/>
-            <Button Content="Revert" Margin="10,0,0,0" MinWidth="110"
+            <Button Content="撤销" Margin="10,0,0,0" MinWidth="110"
                     Command="{Binding RevertCommand}"/>
-            <Button Content="Minimize to tray" Margin="10,0,0,0"
+            <Button Content="最小化到托盘" Margin="10,0,0,0"
                     Command="{Binding MinimizeToTrayCommand}"/>
         </StackPanel>
 

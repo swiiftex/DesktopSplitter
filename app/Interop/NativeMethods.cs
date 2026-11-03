@@ -371,14 +371,14 @@ internal static class NativeMethods
 
     internal static string DispChangeToString(int code) => code switch
     {
-        DISP_CHANGE_SUCCESSFUL => "successful",
-        DISP_CHANGE_RESTART => "restart required",
-        DISP_CHANGE_FAILED => "failed",
-        DISP_CHANGE_BADMODE => "mode not supported",
-        DISP_CHANGE_NOTUPDATED => "could not write settings to the registry",
-        DISP_CHANGE_BADFLAGS => "invalid flags",
-        DISP_CHANGE_BADPARAM => "invalid parameter",
-        DISP_CHANGE_BADDUALVIEW => "not supported in dual-view mode",
-        _ => $"unknown code {code}",
+        DISP_CHANGE_SUCCESSFUL => "成功",
+        DISP_CHANGE_RESTART => "需要重启",
+        DISP_CHANGE_FAILED => "失败",
+        DISP_CHANGE_BADMODE => "模式不受支持",
+        DISP_CHANGE_NOTUPDATED => "无法把设置写入注册表",
+        DISP_CHANGE_BADFLAGS => "标志无效",
+        DISP_CHANGE_BADPARAM => "参数无效",
+        DISP_CHANGE_BADDUALVIEW => "双显模式下不支持",
+        _ => $"未知代码 {code}",
     };
 }

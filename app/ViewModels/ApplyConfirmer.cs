@@ -54,7 +54,7 @@ public sealed class ApplyConfirmer : IApplyConfirmer
 
         if (!gotAnswer)
         {
-            _log($"No answer within {timeoutSeconds}s — reverting the change automatically.");
+            _log($"{timeoutSeconds} 秒内未收到答复——自动撤销此次更改。");
             return false;
         }
         return Volatile.Read(ref keep) == 1;

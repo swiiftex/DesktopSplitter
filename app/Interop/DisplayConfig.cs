@@ -168,7 +168,7 @@ public static class DisplayConfig
         {
             int rc = GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, out uint pathCount, out uint modeCount);
             if (rc != ERROR_SUCCESS)
-                throw new DisplayConfigException($"GetDisplayConfigBufferSizes failed (error {rc}).");
+                throw new DisplayConfigException($"GetDisplayConfigBufferSizes 失败（错误 {rc}）。");
 
             var paths = new DISPLAYCONFIG_PATH_INFO[pathCount];
             var modes = new DISPLAYCONFIG_MODE_INFO[modeCount];
@@ -181,11 +181,11 @@ public static class DisplayConfig
                 return (paths, modes);
             }
             if (rc != ERROR_INSUFFICIENT_BUFFER)
-                throw new DisplayConfigException($"QueryDisplayConfig failed (error {rc}).");
+                throw new DisplayConfigException($"QueryDisplayConfig 失败（错误 {rc}）。");
         }
 
         throw new DisplayConfigException(
-            "QueryDisplayConfig kept failing with ERROR_INSUFFICIENT_BUFFER — the display topology is changing.");
+            "QueryDisplayConfig 持续以 ERROR_INSUFFICIENT_BUFFER 失败——显示拓扑正在变化。");
     }
 
     private static string GetSourceGdiName(DISPLAYCONFIG_PATH_INFO path)

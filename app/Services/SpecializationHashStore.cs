@@ -72,13 +72,13 @@ public static class SpecializationHashStore
             settings.SpecializationHashes[key] = hash.ToString();
             SettingsStore.Save(settings);
 
-            log?.Report($"Learned the identity hash for {monitor.DisplayLabel}: {hash}. " +
-                        "Display hiding can now be turned on and off automatically for this monitor.");
+            log?.Report($"已学到 {monitor.DisplayLabel} 的标识哈希：{hash}。" +
+                        "现在可以为这台显示器自动开启和关闭显示器隐藏。");
             return true;
         }
         catch (Exception ex)
         {
-            log?.Report("Could not save the learned identity hash: " + ex.Message);
+            log?.Report("无法保存学到的标识哈希：" + ex.Message);
             return false;
         }
     }
@@ -107,7 +107,7 @@ public static class SpecializationHashStore
 
                 settings.SpecializationHashes[key] = seeded.ToString();
                 changed = true;
-                log?.Report($"Using the known identity hash for {monitor.DisplayLabel} ({seeded}).");
+                log?.Report($"使用 {monitor.DisplayLabel} 的已知标识哈希（{seeded}）。");
             }
 
             if (changed) SettingsStore.Save(settings);

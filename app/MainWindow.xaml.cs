@@ -80,10 +80,10 @@ public partial class MainWindow : Window, IHidingUi
     {
         var window = new CountdownWindow(
             seconds,
-            heading: "Keep these display settings?",
-            detail: $"Applied: {summary}." + Environment.NewLine +
-                    "If anything looks wrong, or you cannot see this clearly, do nothing — " +
-                    "the previous settings come back when the countdown reaches zero.");
+            heading: "保留这些显示设置？",
+            detail: $"已应用：{summary}。" + Environment.NewLine +
+                    "如果看起来有什么不对，或者你看不清楚，请什么都不要做 —— " +
+                    "倒计时归零时，之前的设置会自动恢复。");
 
         window.Answered += keep =>
         {
@@ -192,7 +192,7 @@ public partial class MainWindow : Window, IHidingUi
     {
         Hide();
         _tray?.ShowBalloon("DesktopSplitter",
-            "Still running in the tray. Right-click the icon for Apply last / Revert / Exit.");
+            "仍在托盘中运行。右键单击托盘图标可进行应用上次配置 / 撤销 / 退出。");
     }
 
     protected override void OnClosing(CancelEventArgs e)

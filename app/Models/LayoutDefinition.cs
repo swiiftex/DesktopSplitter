@@ -199,24 +199,24 @@ public sealed class LayoutDefinition
 
     public static IReadOnlyList<LayoutDefinition> All { get; } = new[]
     {
-        Make(LayoutKind.TwoVertical, "2 — side by side", "Two halves split by a vertical line", 2, 1,
+        Make(LayoutKind.TwoVertical, "2 — 左右并排", "由一条竖线分成左右两半", 2, 1,
             new[] { 0 }, Array.Empty<int>(),
             new LayoutCell(0.0, 0.0, 0.5, 1.0, 0, 0, 1, 1),
             new LayoutCell(0.5, 0.0, 0.5, 1.0, 1, 0, 1, 1)),
 
-        Make(LayoutKind.TwoHorizontal, "2 — stacked", "Two halves split by a horizontal line", 1, 2,
+        Make(LayoutKind.TwoHorizontal, "2 — 上下堆叠", "由一条横线分成上下两半", 1, 2,
             Array.Empty<int>(), new[] { 0 },
             new LayoutCell(0.0, 0.0, 1.0, 0.5, 0, 0, 1, 1),
             new LayoutCell(0.0, 0.5, 1.0, 0.5, 0, 1, 1, 1)),
 
-        Make(LayoutKind.ThreeColumns, "3 — columns", "Three equal columns", 3, 1,
+        Make(LayoutKind.ThreeColumns, "3 — 三列", "三个等宽列", 3, 1,
             new[] { 0, 1 }, Array.Empty<int>(),
             new LayoutCell(0.0,       0.0, 1.0 / 3.0, 1.0, 0, 0, 1, 1),
             new LayoutCell(1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0, 1, 0, 1, 1),
             new LayoutCell(2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0, 2, 0, 1, 1)),
 
-        Make(LayoutKind.BigLeftTwoStackedRight, "3 — big left + 2 right",
-             "One tall segment on the left, two stacked on the right", 2, 2,
+        Make(LayoutKind.BigLeftTwoStackedRight, "3 — 左大右二",
+             "左侧一个纵贯分区，右侧上下堆叠两个分区", 2, 2,
             new[] { 0 }, new[] { 0 },
             new LayoutCell(0.0, 0.0, 0.5, 1.0, 0, 0, 1, 2),
             new LayoutCell(0.5, 0.0, 0.5, 0.5, 1, 0, 1, 1),
@@ -226,22 +226,22 @@ public sealed class LayoutDefinition
         // gets promoted to primary, and is where games and the shell land. Segments 2 and 3
         // are the left (track 0) and right (track 2) fillers — segment order deliberately
         // differs from track order; every consumer keys off LayoutCell.Col, never the index.
-        MakeCustom(LayoutKind.SixteenNineCenter, "3 — 16:9 centre",
-             "True 16:9 centre for gaming, side rails fill the rest", 3, 1,
+        MakeCustom(LayoutKind.SixteenNineCenter, "3 — 16:9 居中",
+             "中央为真正的 16:9 区域，适合游戏；两侧填满剩余空间", 3, 1,
             new[] { 0, 1 }, Array.Empty<int>(),
             SixteenNineCenterDefaults,
             new LayoutCell(0.25, 0.0, 0.50, 1.0, 1, 0, 1, 1),   // segment 1 — centre
             new LayoutCell(0.00, 0.0, 0.25, 1.0, 0, 0, 1, 1),   // segment 2 — left
             new LayoutCell(0.75, 0.0, 0.25, 1.0, 2, 0, 1, 1)),  // segment 3 — right
 
-        Make(LayoutKind.Grid2x2, "4 — 2x2 grid", "Four quadrants", 2, 2,
+        Make(LayoutKind.Grid2x2, "4 — 2x2 网格", "四个象限", 2, 2,
             new[] { 0 }, new[] { 0 },
             new LayoutCell(0.0, 0.0, 0.5, 0.5, 0, 0, 1, 1),
             new LayoutCell(0.5, 0.0, 0.5, 0.5, 1, 0, 1, 1),
             new LayoutCell(0.0, 0.5, 0.5, 0.5, 0, 1, 1, 1),
             new LayoutCell(0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1)),
 
-        Make(LayoutKind.FourColumns, "4 — columns", "Four equal columns", 4, 1,
+        Make(LayoutKind.FourColumns, "4 — 四列", "四个等宽列", 4, 1,
             new[] { 0, 1, 2 }, Array.Empty<int>(),
             new LayoutCell(0.00, 0.0, 0.25, 1.0, 0, 0, 1, 1),
             new LayoutCell(0.25, 0.0, 0.25, 1.0, 1, 0, 1, 1),

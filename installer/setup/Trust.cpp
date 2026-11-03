@@ -1,4 +1,4 @@
-#include "Trust.h"
+﻿#include "Trust.h"
 
 #include <wintrust.h>
 #include <softpub.h>
@@ -77,31 +77,31 @@ namespace DeskSplit
         switch (Status)
         {
         case ERROR_SUCCESS:
-            return L"signature is valid and chains to a trusted root";
+            return L"签名有效，且可追溯到受信任的根证书";
         case TRUST_E_NOSIGNATURE:
-            return L"the file is not signed";
+            return L"该文件未签名";
         case TRUST_E_BAD_DIGEST:
-            return L"the file has been modified since it was signed";
+            return L"该文件在签名后已被修改";
         case TRUST_E_PROVIDER_UNKNOWN:
-            return L"no trust provider is available for this file type";
+            return L"没有适用于此文件类型的信任提供程序";
         case TRUST_E_SUBJECT_FORM_UNKNOWN:
-            return L"the trust provider does not understand this file type";
+            return L"信任提供程序无法识别此文件类型";
         case TRUST_E_EXPLICIT_DISTRUST:
-            return L"the signature is explicitly distrusted on this machine";
+            return L"此计算机已明确不信任该签名";
         case CRYPT_E_SECURITY_SETTINGS:
-            return L"local security settings blocked the verification";
+            return L"本地安全设置阻止了验证";
         case static_cast<LONG>(CERT_E_UNTRUSTEDROOT):
-            return L"signed, but the root certificate is not trusted on this machine";
+            return L"已签名，但此计算机不信任其根证书";
         case static_cast<LONG>(CERT_E_CHAINING):
-            return L"signed, but the certificate chain could not be built";
+            return L"已签名，但无法构建证书链";
         case static_cast<LONG>(CERT_E_EXPIRED):
-            return L"the signing certificate has expired";
+            return L"签名证书已过期";
         case static_cast<LONG>(CERT_E_UNTRUSTEDTESTROOT):
-            return L"signed by a test root certificate that is not trusted";
+            return L"由不受信任的测试根证书签名";
         case static_cast<LONG>(CERT_E_WRONG_USAGE):
-            return L"the certificate is not valid for code signing";
+            return L"该证书不适用于代码签名";
         default:
-            return L"verification failed";
+            return L"验证失败";
         }
     }
 

@@ -5,6 +5,7 @@
 #define IDR_DRIVER_INF          101
 #define IDR_DRIVER_DLL          102
 #define IDR_DRIVER_CAT          103
+#define IDR_WUDFRD_INF          104   // inbox WUDFRD.inf repair copy (see InstallEngine.cpp)
 
 // Product files installed into the target directory.
 #define IDR_APP_EXE             110   // DesktopSplitter.exe (self-contained single file)

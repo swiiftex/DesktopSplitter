@@ -34,24 +34,24 @@ public partial class ManualSpecializationWindow : Window
 
         if (wantEnabled)
         {
-            HeadingText.Text = "One step in Windows Settings";
+            HeadingText.Text = "在 Windows 设置中操作一步";
             StepsText.Text =
-                "1.  Press \"Open display settings\" below.\n" +
-                $"2.  Under \"Select a display to view or change its settings\", choose {name}.\n" +
-                "3.  Turn ON \"Remove display from desktop\".\n\n" +
-                "The screen will go black for a moment, then your split appears on it.";
-            StatusText.Text = $"Waiting for {target.DisplayLabel} to leave the desktop...";
+                "1.  点击下方的\"打开显示设置\"。\n" +
+                $"2.  在\"选择要查看或更改其设置的显示器\"下，选择 {name}。\n" +
+                "3.  打开\"从桌面移除显示器\"。\n\n" +
+                "屏幕会黑屏片刻，然后你的分割就会出现在该显示器上。";
+            StatusText.Text = $"正在等待 {target.DisplayLabel} 离开桌面…";
         }
         else
         {
-            HeadingText.Text = "Put the display back";
+            HeadingText.Text = "将显示器恢复到桌面";
             StepsText.Text =
-                "1.  Press \"Open display settings\" below.\n" +
-                $"2.  Choose {name}.\n" +
-                "3.  Turn OFF \"Remove display from desktop\".";
-            StatusText.Text = $"Waiting for {target.DisplayLabel} to return to the desktop...";
-            OpenSettingsButton.Content = "Open display settings";
-            CancelButton.Content = "Close";
+                "1.  点击下方的\"打开显示设置\"。\n" +
+                $"2.  选择 {name}。\n" +
+                "3.  关闭\"从桌面移除显示器\"。";
+            StatusText.Text = $"正在等待 {target.DisplayLabel} 返回桌面…";
+            OpenSettingsButton.Content = "打开显示设置";
+            CancelButton.Content = "关闭";
         }
 
         ReasonText.Text = reason;
@@ -95,8 +95,8 @@ public partial class ManualSpecializationWindow : Window
     {
         if (!MonitorSpecialization.TryGet(_target, out SpecializationState state, out int rc))
         {
-            StatusText.Text = $"Could not read the display state (error {rc}). " +
-                              "You can still change the toggle in Settings.";
+            StatusText.Text = $"无法读取显示器状态（错误 {rc}）。" +
+                              "你仍可在「设置」中更改该开关。";
             return;
         }
 
@@ -108,8 +108,8 @@ public partial class ManualSpecializationWindow : Window
         }
 
         StatusText.Text = _wantEnabled
-            ? $"Waiting for {_target.DisplayLabel} to leave the desktop...  (currently on the desktop)"
-            : $"Waiting for {_target.DisplayLabel} to return to the desktop...  (currently hidden)";
+            ? $"正在等待 {_target.DisplayLabel} 离开桌面…（当前位于桌面上）"
+            : $"正在等待 {_target.DisplayLabel} 返回桌面…（当前已隐藏）";
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e) => OpenDisplaySettings();

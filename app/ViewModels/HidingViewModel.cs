@@ -111,10 +111,10 @@ public sealed class HidingViewModel : ObservableObject
 
         Rows = new ObservableCollection<StatusRowViewModel>
         {
-            new("Windows can hide displays"),
-            new("This monitor can be hidden"),
-            new("Hidden right now"),
-            new("Hide during Apply"),
+            new("Windows 可隐藏显示器"),
+            new("此显示器可被隐藏"),
+            new("当前已隐藏"),
+            new("应用时隐藏"),
         };
 
         RefreshCommand = new RelayCommand(async () => await RefreshAsync().ConfigureAwait(false), () => !IsBusy);
@@ -180,11 +180,11 @@ public sealed class HidingViewModel : ObservableObject
 
     private static string ComputeDisabledReason(HidingSnapshot snapshot, MonitorInfo? selected)
     {
-        if (selected is null) return "Select a physical monitor first.";
+        if (selected is null) return "请先选择一台物理显示器。";
         if (snapshot.SplitActive)
-            return "A split is active. Press Revert first — display hiding is turned on and off during Apply.";
+            return "当前有正在运行的分屏。请先点「撤销」——显示器隐藏只能在应用分屏时开启或关闭。";
         if (!snapshot.Available && !snapshot.IntentOn)
-            return "Windows reports this monitor cannot be removed from the desktop, so hiding would do nothing.";
+            return "Windows 报告此显示器无法从桌面移除，隐藏不会有任何效果。";
         return string.Empty;
     }
 
@@ -207,7 +207,7 @@ public sealed class HidingViewModel : ObservableObject
         if (enable && !CanEnable) return;
         if (!enable && !CanDisable) return;
 
-        string title = enable ? "Enable display hiding" : "Disable display hiding";
+        string title = enable ? "启用显示器隐藏" : "禁用显示器隐藏";
         if (!ui.Confirm(title, BuildExplanation(target, enable))) return;
 
         IsBusy = true;
@@ -228,32 +228,32 @@ public sealed class HidingViewModel : ObservableObject
 
     private static string BuildExplanation(MonitorInfo? target, bool enable)
     {
-        string name = target?.DisplayLabel ?? "the selected monitor";
+        string name = target?.DisplayLabel ?? "所选显示器";
 
         if (!enable)
         {
             return
-                "Apply will stop removing the physical monitor from the desktop." +
+                "应用分屏时将不再把物理显示器从桌面移除。" +
                 Environment.NewLine + Environment.NewLine +
-                "If a split is running right now, press Revert to put the monitor back.";
+                "如果当前有分屏正在运行，请点「撤销」把显示器恢复到桌面。";
         }
 
         return
-            $"Target: {name} ({target?.DeviceName}){Environment.NewLine}{Environment.NewLine}" +
-            "This records an intent — nothing changes yet. The next time you press Apply, " +
-            "DesktopSplitter will:" + Environment.NewLine +
-            "  1. Create the virtual monitors and make segment 1 the primary display." + Environment.NewLine +
-            "  2. Remove the physical monitor from the desktop — the same thing as Settings > " +
-            "Advanced display > \"Remove display from desktop\"." + Environment.NewLine +
-            "  3. Start the compositor and wait for it to confirm it is drawing to the hidden display." +
+            $"目标：{name}（{target?.DeviceName}）{Environment.NewLine}{Environment.NewLine}" +
+            "这只是记录一个意向——现在还不会有任何变化。下次你点「应用」时，" +
+            "DesktopSplitter 将：" + Environment.NewLine +
+            "  1. 创建虚拟显示器，并把分区 1 设为主显示器。" + Environment.NewLine +
+            "  2. 把物理显示器从桌面移除——与「设置 > " +
+            "高级显示 > 将显示器从桌面移除」相同。" + Environment.NewLine +
+            "  3. 启动合成器，并等待它确认正在向被隐藏的显示器输出画面。" +
             Environment.NewLine +
-            $"  4. Ask you to confirm, with a {ApplyService.SpecializationConfirmSeconds}-second countdown." +
+            $"  4. 请你确认，并给出 {ApplyService.SpecializationConfirmSeconds} 秒倒计时。" +
             Environment.NewLine + Environment.NewLine +
-            "If anything looks wrong — or you cannot see the countdown at all — DO NOTHING. " +
-            $"The monitor comes back automatically after {ApplyService.SpecializationConfirmSeconds} seconds " +
-            "and the compositor restarts in its normal windowed mode." +
+            "如果画面有任何异常——或者你根本看不到倒计时——什么都不要做。" +
+            $"{ApplyService.SpecializationConfirmSeconds} 秒后显示器会自动恢复，" +
+            "合成器会以普通窗口模式重启。" +
             Environment.NewLine + Environment.NewLine +
-            "Revert always puts the monitor back on the desktop.";
+            "点「撤销」随时可以把显示器恢复到桌面。";
     }
 
     // ------------------------------------------------------------------ keep/revert countdown
@@ -281,16 +281,16 @@ public sealed class HidingViewModel : ObservableObject
         /// </summary>
         public bool GuideManualEnable(MonitorInfo physical, SpecializationResult failure, CancellationToken ct)
             => RunGuided(physical, wantEnabled: true,
-                reason: "DesktopSplitter is not allowed to do this itself — Windows refuses the request " +
-                        "from an ordinary application. The compositor is already running and waiting, so " +
-                        "the moment you flip the toggle your split appears on the display.",
+                reason: "DesktopSplitter 无权自行完成此操作——Windows 会拒绝普通应用程序的" +
+                        "这类请求。合成器已经在运行并等待，你一拨动开关，分屏就会出现" +
+                        "在显示器上。",
                 ct);
 
         /// <summary>Undo could not be done programmatically either — walk the user back out.</summary>
         public void GuideManualDisable(MonitorInfo physical, SpecializationResult failure, CancellationToken ct)
             => RunGuided(physical, wantEnabled: false,
-                reason: "DesktopSplitter could not put the display back by itself, so please undo the " +
-                        "toggle. This window stays here until you do.",
+                reason: "DesktopSplitter 无法自行把显示器恢复，请你手动撤销该开关。" +
+                        "在你完成之前，这个窗口会一直停在这里。",
                 ct);
 
         private bool RunGuided(MonitorInfo physical, bool wantEnabled, string reason, CancellationToken ct)
@@ -305,8 +305,8 @@ public sealed class HidingViewModel : ObservableObject
 
             MonitorInfo? placeOn = PickHostMonitor(physical);
             _owner._log(wantEnabled
-                ? $"Showing the Windows Settings instructions on {placeOn?.DisplayLabel ?? "the only display"}."
-                : $"Showing recovery instructions on {placeOn?.DisplayLabel ?? "the only display"}.");
+                ? $"正在 {placeOn?.DisplayLabel ?? "唯一的显示器"} 上显示 Windows 设置操作说明。"
+                : $"正在 {placeOn?.DisplayLabel ?? "唯一的显示器"} 上显示恢复操作说明。");
 
             dispatcher.Invoke(() =>
             {
@@ -346,9 +346,9 @@ public sealed class HidingViewModel : ObservableObject
 
             MonitorInfo? placeOn = PickHostMonitor(physical);
             _owner._log(placeOn is null || SameDevice(placeOn.DeviceName, physical.DeviceName)
-                ? "Countdown will appear on the only available display."
-                : $"Countdown will appear on {placeOn.DisplayLabel} ({placeOn.DeviceName}), " +
-                  "away from the hidden monitor.");
+                ? "倒计时将显示在唯一可用的显示器上。"
+                : $"倒计时将显示在 {placeOn.DisplayLabel}（{placeOn.DeviceName}）上，" +
+                  "避开被隐藏的显示器。");
 
             dispatcher.Invoke(() =>
             {
@@ -364,7 +364,7 @@ public sealed class HidingViewModel : ObservableObject
 
             if (!gotAnswer)
             {
-                _owner._log($"No answer within {timeoutSeconds}s — reverting automatically.");
+                _owner._log($"{timeoutSeconds} 秒内未收到答复——自动撤销。");
                 return false;
             }
             return Volatile.Read(ref keep) == 1;
